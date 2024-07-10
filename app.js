@@ -199,12 +199,20 @@ app.get('/siswa', (req, res) => {
   const sql = `
   SELECT 
     siswa.*,
-    COALESCE(wali.nama, '') AS nama_wali,
-    COALESCE(wali.no_telepon, '') AS no_telepon_wali,
-    COALESCE(ayah.nama, '') AS nama_ayah,
-    COALESCE(ayah.no_telepon, '') AS no_telepon_ayah,
-    COALESCE(ibu.nama, '') AS nama_ibu,
-    COALESCE(ibu.no_telepon, '') AS no_telepon_ibu,
+    CONCAT(
+      COALESCE(wali.nama, ''), 
+      IF(wali.nama IS NOT NULL, ', ', ''), 
+      COALESCE(ayah.nama, ''), 
+      IF(ayah.nama IS NOT NULL, ', ', ''), 
+      COALESCE(ibu.nama, '')
+    ) AS nama_orangtua,
+    CONCAT(
+      COALESCE(wali.no_telepon, ''), 
+      IF(wali.no_telepon IS NOT NULL, ', ', ''), 
+      COALESCE(ayah.no_telepon, ''), 
+      IF(ayah.no_telepon IS NOT NULL, ', ', ''), 
+      COALESCE(ibu.no_telepon, '')
+    ) AS no_telepon_orangtua,
     CONCAT(kelas.no_kelas, ' ', kelas.nama_kelas) AS kelas,
     kelas.tahun_ajaran AS tahun_ajaran
   FROM 
@@ -226,6 +234,7 @@ app.get('/siswa', (req, res) => {
     res.json(results);
   });
 });
+
 
 
 
@@ -284,33 +293,57 @@ app.delete('/siswa/:nisn', (req, res) => {
 
 
 
-app.get(`/siswa/:nisn`, (req, res) => {
+app.get('/siswa/:nisn', (req, res) => {
   const { nisn } = req.params;
   const sql = `
     SELECT 
-        siswa.*,
-        COALESCE(orangtua.nama, '') AS "nama orangtua",
-        COALESCE(orangtua.no_telepon, '') AS "no telepon orangtua",
+        siswa.nisn,
+        siswa.nama,
+        siswa.nis,
+        siswa.email,
+        siswa.jenis_kelamin,
+        siswa.tempat_lahir,
+        siswa.tanggal_lahir,
+        siswa.alamat,
+        siswa.no_telepon,
+        siswa.password,
+        CONCAT(
+          COALESCE(wali.nama, ''), 
+          IF(wali.nama IS NOT NULL, ', ', ''), 
+          COALESCE(ayah.nama, ''), 
+          IF(ayah.nama IS NOT NULL, ', ', ''), 
+          COALESCE(ibu.nama, '')
+        ) AS nama_orangtua,
+        CONCAT(
+          COALESCE(wali.no_telepon, ''), 
+          IF(wali.no_telepon IS NOT NULL, ', ', ''), 
+          COALESCE(ayah.no_telepon, ''), 
+          IF(ayah.no_telepon IS NOT NULL, ', ', ''), 
+          COALESCE(ibu.no_telepon, '')
+        ) AS no_telepon_orangtua,
         CONCAT(kelas.no_kelas, ' ', kelas.nama_kelas) AS kelas,
-        kelas.tahun_ajaran AS "tahun ajaran"
+        kelas.tahun_ajaran AS tahun_ajaran
     FROM 
         siswa
     LEFT JOIN 
-        orangtua ON siswa.id_orangtua = orangtua.id_orangtua
+        orangtua AS wali ON siswa.id_wali = wali.id_orangtua
+    LEFT JOIN 
+        orangtua AS ayah ON siswa.id_ayah = ayah.id_orangtua
+    LEFT JOIN 
+        orangtua AS ibu ON siswa.id_ibu = ibu.id_orangtua
     LEFT JOIN
         kelas ON siswa.id_kelas = kelas.id_kelas
-    WHERE siswa.nisn = ?; 
+    WHERE siswa.nisn = ?;
   `;
   
   db.query(sql, [parseInt(nisn)], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
-    // Menghapus kolom id_kelas dari setiap baris hasil
-    results.forEach(result => delete result.id_kelas);
     res.json(results);
   });
 });
+
 
 app.put('/siswa', (req, res) => {
   const { id_kelas, nisn_list } = req.body;
