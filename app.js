@@ -240,13 +240,13 @@ app.get('/siswa', (req, res) => {
 
 
 app.post('/siswa', (req, res) => {
-  const { nisn, nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas } = req.body;
+  const { nisn, nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password } = req.body;
   const sql = `
-    INSERT INTO siswa (nisn, nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO siswa (nisn, nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   
-  db.query(sql, [nisn, nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas], (err, results) => {
+  db.query(sql, [nisn, nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -254,16 +254,17 @@ app.post('/siswa', (req, res) => {
   });
 });
 
+
 app.put('/siswa/:nisn', (req, res) => {
   const { nisn } = req.params;
-  const { nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas } = req.body;
+  const { nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password } = req.body;
   const sql = `
     UPDATE siswa
-    SET nama = ?, nis = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, id_kelas = ?
+    SET nama = ?, nis = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, id_kelas = ?, password = ?
     WHERE nisn = ?
   `;
   
-  db.query(sql, [nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, nisn], (err, results) => {
+  db.query(sql, [nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password, nisn], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -273,6 +274,7 @@ app.put('/siswa/:nisn', (req, res) => {
     res.json({ message: 'Data siswa berhasil diperbarui' });
   });
 });
+
 
 app.delete('/siswa/:nisn', (req, res) => {
   const { nisn } = req.params;
