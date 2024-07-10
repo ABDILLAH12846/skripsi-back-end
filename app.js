@@ -55,7 +55,14 @@ app.post('/login', (req, res) => {
     if (results.length > 0) {
       const guru = results[0];
       const token = jwt.sign({ id: guru.nip, role: 'guru' }, "secret", { expiresIn: '1h' });
-      return res.status(200).json({ message: 'Login berhasil', token, user: guru, role: guru.jabatan });
+
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production', // Gunakan https di lingkungan produksi
+        maxAge: 3600000 // 1 jam
+      });
+
+      return res.status(200).json({ message: 'Login berhasil', user: guru, role: 'guru' });
     } else {
       db.query(sqlSiswa, [id, password], (err, results) => {
         if (err) {
@@ -64,8 +71,15 @@ app.post('/login', (req, res) => {
 
         if (results.length > 0) {
           const siswa = results[0];
-          const token = jwt.sign({ id: siswa.nisn, role: 'siswa' }, process.env.JWT_SECRET, { expiresIn: '1h' });
-          return res.status(200).json({ message: 'Login berhasil', token, user: siswa, role: 'siswa' });
+          const token = jwt.sign({ id: siswa.nisn, role: 'siswa' }, "secret", { expiresIn: '1h' });
+
+          res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production', // Gunakan https di lingkungan produksi
+            maxAge: 3600000 // 1 jam
+          });
+
+          return res.status(200).json({ message: 'Login berhasil', user: siswa, role: 'siswa' });
         } else {
           return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
         }
@@ -73,6 +87,7 @@ app.post('/login', (req, res) => {
     }
   });
 });
+
 
 
 
@@ -125,13 +140,13 @@ app.get('/guru/:nip', (req, res) => {
 });
 
 app.post('/guru', (req, res) => {
-  const { nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan } = req.body;
+  const { nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password } = req.body;
   const sql = `
-    INSERT INTO guru (nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO guru (nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan, password)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   
-  db.query(sql, [nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan], (err, results) => {
+  db.query(sql, [nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan, password], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -139,16 +154,17 @@ app.post('/guru', (req, res) => {
   });
 });
 
+
 app.put('/guru/:nip', (req, res) => {
   const { nip } = req.params;
-  const { nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan } = req.body;
+  const { nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password } = req.body;
   const sql = `
     UPDATE guru
-    SET nama = ?, nuptk = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, status_kepegawaian = ?, jenjang = ?, jurusan = ?, jabatan = ?
+    SET nama = ?, nuptk = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, status_kepegawaian = ?, jenjang = ?, jurusan = ?, jabatan = ?, password = ?
     WHERE nip = ?
   `;
   
-  db.query(sql, [nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, nip], (err, results) => {
+  db.query(sql, [nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, nip], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -158,6 +174,7 @@ app.put('/guru/:nip', (req, res) => {
     res.json({ message: 'Data guru berhasil diperbarui' });
   });
 });
+
 
 app.delete('/guru/:nip', (req, res) => {
   const { nip } = req.params;
@@ -182,17 +199,26 @@ app.get('/siswa', (req, res) => {
   const sql = `
   SELECT 
     siswa.*,
-    COALESCE(orangtua.nama, '') AS "nama orangtua",
-    COALESCE(orangtua.no_telepon, '') AS "no telepon orangtua",
+    COALESCE(wali.nama, '') AS nama_wali,
+    COALESCE(wali.no_telepon, '') AS no_telepon_wali,
+    COALESCE(ayah.nama, '') AS nama_ayah,
+    COALESCE(ayah.no_telepon, '') AS no_telepon_ayah,
+    COALESCE(ibu.nama, '') AS nama_ibu,
+    COALESCE(ibu.no_telepon, '') AS no_telepon_ibu,
     CONCAT(kelas.no_kelas, ' ', kelas.nama_kelas) AS kelas,
-    kelas.tahun_ajaran AS "tahun ajaran"
+    kelas.tahun_ajaran AS tahun_ajaran
   FROM 
     siswa
   LEFT JOIN 
-    orangtua ON siswa.id_orangtua = orangtua.id_orangtua
+    orangtua AS wali ON siswa.id_wali = wali.id_orangtua
+  LEFT JOIN 
+    orangtua AS ayah ON siswa.id_ayah = ayah.id_orangtua
+  LEFT JOIN 
+    orangtua AS ibu ON siswa.id_ibu = ibu.id_orangtua
   LEFT JOIN
     kelas ON siswa.id_kelas = kelas.id_kelas;
   `;
+
   db.query(sql, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
@@ -200,6 +226,7 @@ app.get('/siswa', (req, res) => {
     res.json(results);
   });
 });
+
 
 
 
@@ -345,7 +372,7 @@ app.put('/siswa', (req, res) => {
     });
 });
 
-app.put('/orangtuasiswa', (req, res) => {
+app.put('/walisiswa', (req, res) => {
   const { id_orangtua, nisn_list } = req.body;
 
   console.log("hallo")
@@ -358,14 +385,136 @@ app.put('/orangtuasiswa', (req, res) => {
   // SQL query untuk update data siswa
   const sql = `
     UPDATE siswa
-    SET id_orangtua = ?
+    SET id_wali = ?
     WHERE nisn = ?
   `;
 
   // SQL query untuk set id_orangtua ke NULL
   const sqlSetNull = `
     UPDATE siswa
-    SET id_orangtua = NULL
+    SET id_wali = NULL
+    WHERE nisn = ?
+  `;
+
+  // Menjalankan update query untuk setiap nisn
+  const queries = nisn_list.map(nisn => {
+    return new Promise((resolve, reject) => {
+      if (!nisn.kelas) {
+        // Set id_orangtua ke NULL jika id_orangtua adalah "null"
+        console.log("b aja")
+        db.query(sqlSetNull, [nisn.nisn], (err, results) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(results);
+          }
+        });
+      } else {
+        // Update id_orangtua dengan nilai yang diberikan jika id_orangtua tidak "null"
+        
+        db.query(sql, [id_orangtua, nisn.nisn], (err, results) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(results);
+          }
+        });
+      }
+    });
+  });
+
+  // Menunggu semua query selesai
+  Promise.all(queries)
+    .then(() => {
+      res.status(200).json({ message: 'Data siswa berhasil diperbarui' });
+    })
+    .catch(err => {
+      res.status(500).json("hallo");
+    });
+});
+
+app.put('/ayahsiswa', (req, res) => {
+  const { id_orangtua, nisn_list } = req.body;
+
+  console.log("hallo")
+
+  // Validasi data input
+  if (!id_orangtua || !Array.isArray(nisn_list) || nisn_list.length === 0) {
+    return res.status(400).json({ error: 'id_orangtua dan nisn_list yang valid wajib diisi' });
+  }
+
+  // SQL query untuk update data siswa
+  const sql = `
+    UPDATE siswa
+    SET id_ayah = ?
+    WHERE nisn = ?
+  `;
+
+  // SQL query untuk set id_orangtua ke NULL
+  const sqlSetNull = `
+    UPDATE siswa
+    SET id_ayah = NULL
+    WHERE nisn = ?
+  `;
+
+  // Menjalankan update query untuk setiap nisn
+  const queries = nisn_list.map(nisn => {
+    return new Promise((resolve, reject) => {
+      if (!nisn.kelas) {
+        // Set id_orangtua ke NULL jika id_orangtua adalah "null"
+        console.log("b aja")
+        db.query(sqlSetNull, [nisn.nisn], (err, results) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(results);
+          }
+        });
+      } else {
+        // Update id_orangtua dengan nilai yang diberikan jika id_orangtua tidak "null"
+        
+        db.query(sql, [id_orangtua, nisn.nisn], (err, results) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(results);
+          }
+        });
+      }
+    });
+  });
+
+  // Menunggu semua query selesai
+  Promise.all(queries)
+    .then(() => {
+      res.status(200).json({ message: 'Data siswa berhasil diperbarui' });
+    })
+    .catch(err => {
+      res.status(500).json("hallo");
+    });
+});
+
+app.put('/ibusiswa', (req, res) => {
+  const { id_orangtua, nisn_list } = req.body;
+
+  console.log("hallo")
+
+  // Validasi data input
+  if (!id_orangtua || !Array.isArray(nisn_list) || nisn_list.length === 0) {
+    return res.status(400).json({ error: 'id_orangtua dan nisn_list yang valid wajib diisi' });
+  }
+
+  // SQL query untuk update data siswa
+  const sql = `
+    UPDATE siswa
+    SET id_ibu = ?
+    WHERE nisn = ?
+  `;
+
+  // SQL query untuk set id_orangtua ke NULL
+  const sqlSetNull = `
+    UPDATE siswa
+    SET id_ibu = NULL
     WHERE nisn = ?
   `;
 
@@ -1890,7 +2039,8 @@ app.get('/orangtua', (req, res) => {
       alamat,
       no_telepon,
       pekerjaan,
-      gaji
+      gaji,
+      status
     FROM 
       orangtua;
   `;
@@ -1906,7 +2056,9 @@ app.get('/orangtua', (req, res) => {
 
 app.get('/orangtua/:id', (req, res) => {
   const { id } = req.params;
-  const sql = `
+  const { status } = req.query;
+
+  let sql = `
     SELECT 
       orangtua.id_orangtua,
       orangtua.Nama AS nama_orangtua,
@@ -1914,15 +2066,24 @@ app.get('/orangtua/:id', (req, res) => {
       orangtua.no_telepon,
       orangtua.pekerjaan,
       orangtua.gaji,
+      orangtua.status,
       siswa.nisn,
       siswa.nama AS nama_siswa
     FROM 
       orangtua
     LEFT JOIN 
-      siswa ON orangtua.id_orangtua = siswa.id_orangtua
-    WHERE
-      orangtua.id_orangtua = ?
-  `;
+      siswa ON `;
+
+  // Tambahkan kondisi berdasarkan status
+  if (status === 'ayah') {
+    sql += `orangtua.id_orangtua = siswa.id_ayah `;
+  } else if (status === 'ibu') {
+    sql += `orangtua.id_orangtua = siswa.id_ibu `;
+  } else {
+    sql += `orangtua.id_orangtua = siswa.id_wali `;
+  }
+
+  sql += `WHERE orangtua.id_orangtua = ?`;
 
   db.query(sql, [id], (err, results) => {
     if (err) {
@@ -1941,6 +2102,7 @@ app.get('/orangtua/:id', (req, res) => {
       no_telepon: results[0].no_telepon,
       pekerjaan: results[0].pekerjaan,
       gaji: results[0].gaji,
+      status: results[0].status,
       daftar_siswa: []
     };
 
@@ -1959,11 +2121,13 @@ app.get('/orangtua/:id', (req, res) => {
 });
 
 
+
+
 app.post('/orangtua', (req, res) => {
-  const { id_orangtua, nama, alamat, no_telepon, pekerjaan, gaji } = req.body;
+  const { id_orangtua, nama, alamat, no_telepon, pekerjaan, gaji, status } = req.body;
 
   // Validasi data input
-  if (!id_orangtua || !nama || !alamat || !no_telepon || !pekerjaan || !gaji) {
+  if (!id_orangtua || !nama || !alamat || !no_telepon || !pekerjaan || !gaji || !status) {
     return res.status(400).json({ error: 'Semua kolom wajib diisi' });
   }
 
@@ -1985,11 +2149,11 @@ app.post('/orangtua', (req, res) => {
 
     // SQL query untuk insert data ke tabel orangtua
     const insertSql = `
-      INSERT INTO orangtua (id_orangtua, nama, alamat, no_telepon, pekerjaan, gaji)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO orangtua (id_orangtua, nama, alamat, no_telepon, pekerjaan, gaji, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
-    db.query(insertSql, [id_orangtua, nama, alamat, no_telepon, pekerjaan, gaji], (err, results) => {
+    db.query(insertSql, [id_orangtua, nama, alamat, no_telepon, pekerjaan, gaji, status], (err, results) => {
       if (err) {
         return res.status(500).json({ error: err.message });
       }
@@ -1999,23 +2163,24 @@ app.post('/orangtua', (req, res) => {
 });
 
 
+
 app.put('/orangtua/:id_orangtua', (req, res) => {
   const { id_orangtua } = req.params;
-  const { nama, alamat, no_telepon, pekerjaan, gaji } = req.body;
+  const { nama, alamat, no_telepon, pekerjaan, gaji, status } = req.body;
 
   // Validasi data input
-  if (!nama || !alamat || !no_telepon || !pekerjaan || !gaji) {
+  if (!nama || !alamat || !no_telepon || !pekerjaan || !gaji || !status) {
     return res.status(400).json({ error: 'Semua kolom wajib diisi' });
   }
 
   // SQL query untuk memperbarui data orang tua
   const updateSql = `
     UPDATE orangtua
-    SET nama = ?, alamat = ?, no_telepon = ?, pekerjaan = ?, gaji = ?
+    SET nama = ?, alamat = ?, no_telepon = ?, pekerjaan = ?, gaji = ?, status = ?
     WHERE id_orangtua = ?
   `;
 
-  db.query(updateSql, [nama, alamat, no_telepon, pekerjaan, gaji, id_orangtua], (err, results) => {
+  db.query(updateSql, [nama, alamat, no_telepon, pekerjaan, gaji, status, id_orangtua], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -2027,6 +2192,7 @@ app.put('/orangtua/:id_orangtua', (req, res) => {
     res.status(200).json({ message: 'Data orang tua berhasil diperbarui' });
   });
 });
+
 
 
 
