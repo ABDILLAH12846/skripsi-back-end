@@ -240,13 +240,13 @@ app.get('/siswa', (req, res) => {
 
 
 app.post('/siswa', (req, res) => {
-  const { nisn, nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password } = req.body;
+  const { nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, password, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid } = req.body;
   const sql = `
-    INSERT INTO siswa (nisn, nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO siswa (nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, password, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   
-  db.query(sql, [nisn, nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password], (err, results) => {
+  db.query(sql, [nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, password, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -255,16 +255,18 @@ app.post('/siswa', (req, res) => {
 });
 
 
+
+
 app.put('/siswa/:nisn', (req, res) => {
   const { nisn } = req.params;
-  const { nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password } = req.body;
+  const { nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password, id_wali, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid } = req.body;
   const sql = `
     UPDATE siswa
-    SET nama = ?, nis = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, id_kelas = ?, password = ?
+    SET nama = ?, NIPD = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, id_kelas = ?, password = ?, id_wali = ?, id_ayah = ?, id_ibu = ?, No_KK = ?, NIK = ?, status = ?, terdaftar_sebagai = ?, tanggal_masuk = ?, valid = ?
     WHERE nisn = ?
   `;
   
-  db.query(sql, [nama, nis, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password, nisn], (err, results) => {
+  db.query(sql, [nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password, id_wali, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, nisn], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -274,6 +276,8 @@ app.put('/siswa/:nisn', (req, res) => {
     res.json({ message: 'Data siswa berhasil diperbarui' });
   });
 });
+
+
 
 
 app.delete('/siswa/:nisn', (req, res) => {
@@ -301,7 +305,7 @@ app.get('/siswa/:nisn', (req, res) => {
     SELECT 
         siswa.nisn,
         siswa.nama,
-        siswa.nis,
+        siswa.NIPD,
         siswa.email,
         siswa.jenis_kelamin,
         siswa.tempat_lahir,
@@ -309,20 +313,30 @@ app.get('/siswa/:nisn', (req, res) => {
         siswa.alamat,
         siswa.no_telepon,
         siswa.password,
-        CONCAT(
-          COALESCE(wali.nama, ''), 
-          IF(wali.nama IS NOT NULL, ', ', ''), 
-          COALESCE(ayah.nama, ''), 
-          IF(ayah.nama IS NOT NULL, ', ', ''), 
-          COALESCE(ibu.nama, '')
-        ) AS nama_orangtua,
-        CONCAT(
-          COALESCE(wali.no_telepon, ''), 
-          IF(wali.no_telepon IS NOT NULL, ', ', ''), 
-          COALESCE(ayah.no_telepon, ''), 
-          IF(ayah.no_telepon IS NOT NULL, ', ', ''), 
-          COALESCE(ibu.no_telepon, '')
-        ) AS no_telepon_orangtua,
+        siswa.No_KK,
+        siswa.NIK,
+        siswa.status,
+        siswa.tanggal_masuk,
+        siswa.valid,
+        siswa.terdaftar_sebagai,
+        wali.nama AS wali_nama,
+        wali.alamat AS wali_alamat,
+        wali.no_telepon AS wali_no_telepon,
+        wali.status AS wali_status,
+        wali.pekerjaan AS wali_pekerjaan,
+        wali.gaji AS wali_gaji,
+        ayah.nama AS ayah_nama,
+        ayah.alamat AS ayah_alamat,
+        ayah.no_telepon AS ayah_no_telepon,
+        ayah.status AS ayah_status,
+        ayah.pekerjaan AS ayah_pekerjaan,
+        ayah.gaji AS ayah_gaji,
+        ibu.nama AS ibu_nama,
+        ibu.alamat AS ibu_alamat,
+        ibu.no_telepon AS ibu_no_telepon,
+        ibu.status AS ibu_status,
+        ibu.pekerjaan AS ibu_pekerjaan,
+        ibu.gaji AS ibu_gaji,
         CONCAT(kelas.no_kelas, ' ', kelas.nama_kelas) AS kelas,
         kelas.tahun_ajaran AS tahun_ajaran
     FROM 
@@ -342,9 +356,55 @@ app.get('/siswa/:nisn', (req, res) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
-    res.json(results);
+
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Siswa dengan NISN tersebut tidak ditemukan' });
+    }
+
+    const siswa = results[0];
+    const orangtua = [];
+
+    function addOrangtua(nama, alamat, no_telepon, status, pekerjaan, gaji) {
+      if (nama || alamat || no_telepon || status || pekerjaan || gaji) {
+        orangtua.push({
+          nama: nama,
+          alamat: alamat,
+          no_telepon: no_telepon,
+          status: status,
+          pekerjaan: pekerjaan,
+          gaji: gaji
+        });
+      }
+    }
+
+    addOrangtua(siswa.wali_nama, siswa.wali_alamat, siswa.wali_no_telepon, siswa.wali_status, siswa.wali_pekerjaan, siswa.wali_gaji);
+    addOrangtua(siswa.ayah_nama, siswa.ayah_alamat, siswa.ayah_no_telepon, siswa.ayah_status, siswa.ayah_pekerjaan, siswa.ayah_gaji);
+    addOrangtua(siswa.ibu_nama, siswa.ibu_alamat, siswa.ibu_no_telepon, siswa.ibu_status, siswa.ibu_pekerjaan, siswa.ibu_gaji);
+
+    res.json({
+      nisn: siswa.nisn,
+      nama: siswa.nama,
+      NIPD: siswa.NIPD,
+      email: siswa.email,
+      jenis_kelamin: siswa.jenis_kelamin,
+      tempat_lahir: siswa.tempat_lahir,
+      tanggal_lahir: siswa.tanggal_lahir,
+      alamat: siswa.alamat,
+      no_telepon: siswa.no_telepon,
+      password: siswa.password,
+      No_KK: siswa.No_KK,
+      NIK: siswa.NIK,
+      status: siswa.status,
+      tanggal_masuk: siswa.tanggal_masuk,
+      valid: siswa.valid,
+      terdaftar_sebagai: siswa.terdaftar_sebagai,
+      orangtua: orangtua,
+      kelas: siswa.kelas,
+      tahun_ajaran: siswa.tahun_ajaran
+    });
   });
 });
+
 
 
 app.put('/siswa', (req, res) => {
@@ -2227,6 +2287,97 @@ app.put('/orangtua/:id_orangtua', (req, res) => {
     res.status(200).json({ message: 'Data orang tua berhasil diperbarui' });
   });
 });
+
+app.get('/filterraport/:nip', (req, res) => {
+  const nip = req.params.nip;
+
+  const query = `
+    SELECT siswa.nisn, siswa.nama, siswa.nis, siswa.email, siswa.jenis_kelamin, siswa.tempat_lahir, siswa.tanggal_lahir, siswa.alamat, siswa.no_telepon
+    FROM siswa
+    JOIN kelas ON siswa.id_kelas = kelas.id_kelas
+    WHERE kelas.nip = ?
+  `;
+
+  db.query(query, [nip], (err, results) => {
+    if (err) {
+      console.error('Error executing query:', err);
+      res.status(500).send('Internal server error');
+      return;
+    }
+
+    res.json(results);
+  });
+});
+
+app.get('/raport/:nisn', (req, res) => {
+    const nisn = req.params.nisn;
+    const semester = req.query.semester;
+
+    if (!semester) {
+        return res.status(400).json({ message: 'Semester is required' });
+    }
+
+    const query = `
+        SELECT 
+            mp.nama AS nama_matapelajaran, 
+            COALESCE(uts.nilai, 0) AS UTS,
+            COALESCE(uas.nilai, 0) AS UAS,
+            COALESCE(uha.nilai, 0) AS UHA,
+            COALESCE(th.nilai, 0) AS TH,
+            CASE
+                WHEN COALESCE(uts.nilai, 0) > 92 THEN 'A'
+                WHEN COALESCE(uts.nilai, 0) > 83 THEN 'B'
+                WHEN COALESCE(uts.nilai, 0) > 74 THEN 'C'
+                WHEN COALESCE(uts.nilai, 0) > 64 THEN 'E'  -- Kurangi batas bawah untuk D
+                ELSE 'D'  -- Jika antara 65-74, maka D
+            END AS predikat,
+            CASE
+                WHEN COALESCE(uts.nilai, 0) > 74 THEN 'TUNTAS'
+                ELSE 'TIDAK TUNTAS'
+            END AS keterangan
+        FROM siswa s
+        JOIN mata_pelajaran mp ON s.id_kelas = mp.id_kelas
+        LEFT JOIN nilai uts ON s.nisn = uts.nisn AND mp.id_matapelajaran = uts.id_matapelajaran AND uts.tipe = 'UTS' AND uts.semester = ?
+        LEFT JOIN nilai uas ON s.nisn = uas.nisn AND mp.id_matapelajaran = uas.id_matapelajaran AND uas.tipe = 'UAS' AND uas.semester = ?
+        LEFT JOIN nilai uha ON s.nisn = uha.nisn AND mp.id_matapelajaran = uha.id_matapelajaran AND uha.tipe = 'UHA' AND uha.semester = ?
+        LEFT JOIN nilai th ON s.nisn = th.nisn AND mp.id_matapelajaran = th.id_matapelajaran AND th.tipe = 'TH' AND th.semester = ?
+        WHERE s.nisn = ?
+    `;
+
+    db.query(query, [semester, semester, semester, semester, nisn], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'Siswa tidak ditemukan atau tidak memiliki nilai untuk semester ini' });
+        }
+
+        // Menghitung predikat dan keterangan berdasarkan nilai UTS
+        rows.forEach(row => {
+            if (row.UTS > 92) {
+                row.predikat = 'A';
+                row.keterangan = 'TUNTAS';
+            } else if (row.UTS > 83) {
+                row.predikat = 'B';
+                row.keterangan = 'TUNTAS';
+            } else if (row.UTS > 74) {
+                row.predikat = 'C';
+                row.keterangan = 'TUNTAS';
+            } else if (row.UTS > 64) {  // Nilai antara 65-74 dianggap D
+                row.predikat = 'D';
+                row.keterangan = 'TIDAK TUNTAS';  // Tidak tuntas untuk nilai D
+            } else {
+                row.predikat = 'E';
+                row.keterangan = 'TIDAK TUNTAS';
+            }
+        });
+
+        res.json(rows);
+    });
+});
+
+
+
 
 
 
