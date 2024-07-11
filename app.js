@@ -3,8 +3,6 @@ const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
-const bodyParser = require('body-parser');
 const app = express();
 const port = 8000;
 
@@ -140,13 +138,13 @@ app.get('/guru/:nip', (req, res) => {
 });
 
 app.post('/guru', (req, res) => {
-  const { nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password } = req.body;
+  const { nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK } = req.body;
   const sql = `
-    INSERT INTO guru (nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan, password)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO guru (nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   
-  db.query(sql, [nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan, password], (err, results) => {
+  db.query(sql, [nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -154,17 +152,16 @@ app.post('/guru', (req, res) => {
   });
 });
 
-
 app.put('/guru/:nip', (req, res) => {
   const { nip } = req.params;
-  const { nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password } = req.body;
+  const { nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK } = req.body;
   const sql = `
     UPDATE guru
-    SET nama = ?, nuptk = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, status_kepegawaian = ?, jenjang = ?, jurusan = ?, jabatan = ?, password = ?
+    SET nama = ?, nuptk = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, status_kepegawaian = ?, jenjang = ?, jurusan = ?, jabatan = ?, password = ?, tanggal_mulai_tugas = ?, status = ?, valid = ?, NIK = ?, No_KK = ?
     WHERE nip = ?
   `;
   
-  db.query(sql, [nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, nip], (err, results) => {
+  db.query(sql, [nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK, nip], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -174,6 +171,8 @@ app.put('/guru/:nip', (req, res) => {
     res.json({ message: 'Data guru berhasil diperbarui' });
   });
 });
+
+
 
 
 app.delete('/guru/:nip', (req, res) => {
@@ -2292,7 +2291,7 @@ app.get('/filterraport/:nip', (req, res) => {
   const nip = req.params.nip;
 
   const query = `
-    SELECT siswa.nisn, siswa.nama, siswa.nis, siswa.email, siswa.jenis_kelamin, siswa.tempat_lahir, siswa.tanggal_lahir, siswa.alamat, siswa.no_telepon
+    SELECT siswa.nisn, siswa.nama, siswa.NIPD, siswa.email, siswa.jenis_kelamin, siswa.tempat_lahir, siswa.tanggal_lahir, siswa.alamat, siswa.no_telepon
     FROM siswa
     JOIN kelas ON siswa.id_kelas = kelas.id_kelas
     WHERE kelas.nip = ?
