@@ -409,7 +409,7 @@ app.get('/siswa/:nisn', (req, res) => {
 app.put('/siswa', (req, res) => {
   const { id_kelas, nisn_list } = req.body;
 
-  console.log("kelas")
+  console.log("kelas");
 
   // Validasi data input
   if (!id_kelas || !Array.isArray(nisn_list) || nisn_list.length === 0) {
@@ -419,23 +419,23 @@ app.put('/siswa', (req, res) => {
   // SQL query untuk update data siswa
   const sql = `
     UPDATE siswa
-    SET id_kelas = ?
+    SET id_kelas = ?, tinggal_kelas = 0
     WHERE nisn = ?
   `;
 
-  // SQL query untuk set id_kelas ke NULL
+  // SQL query untuk set id_kelas ke NULL dan tinggal_kelas ke 1
   const sqlSetNull = `
     UPDATE siswa
-    SET id_kelas = NULL
+    SET id_kelas = NULL, tinggal_kelas = 1
     WHERE nisn = ?
   `;
 
   // Menjalankan update query untuk setiap nisn
   const queries = nisn_list.map(nisn => {
-    console.log(nisn)
+    console.log(nisn);
     return new Promise((resolve, reject) => {
       if (!nisn.kelas) {
-        // Set id_kelas ke NULL jika nisn adalah "null"
+        // Set id_kelas ke NULL dan tinggal_kelas ke 1 jika nisn adalah "null"
         db.query(sqlSetNull, [nisn.nisn], (err, results) => {
           if (err) {
             reject(err);
@@ -444,7 +444,7 @@ app.put('/siswa', (req, res) => {
           }
         });
       } else {
-        // Update id_kelas dengan nilai yang diberikan jika nisn tidak "null"
+        // Update id_kelas dengan nilai yang diberikan dan tinggal_kelas ke 0 jika nisn tidak "null"
         db.query(sql, [id_kelas, nisn.nisn], (err, results) => {
           if (err) {
             reject(err);
@@ -465,6 +465,7 @@ app.put('/siswa', (req, res) => {
       res.status(500).json({ error: err.message });
     });
 });
+
 
 app.put('/walisiswa', (req, res) => {
   const { id_orangtua, nisn_list } = req.body;
