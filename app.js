@@ -1568,12 +1568,16 @@ app.get('/nilai/matapelajaran/:id_matapelajaran/:nisn/:semester', (req, res) => 
       mata_pelajaran.nama AS nama_matapelajaran,
       COALESCE(uts.id_nilai, NULL) AS uts_id_nilai,
       COALESCE(uts.nilai, 0) AS uts_nilai,
+      COALESCE(uts.capaian_kompetensi, NULL) AS uts_capaian_kompetensi,
       COALESCE(uas.id_nilai, NULL) AS uas_id_nilai,
       COALESCE(uas.nilai, 0) AS uas_nilai,
+      COALESCE(uas.capaian_kompetensi, NULL) AS uas_capaian_kompetensi,
       COALESCE(uha.id_nilai, NULL) AS uha_id_nilai,
       COALESCE(uha.nilai, 0) AS uha_nilai,
+      COALESCE(uha.capaian_kompetensi, NULL) AS uha_capaian_kompetensi,
       COALESCE(th.id_nilai, NULL) AS th_id_nilai,
-      COALESCE(th.nilai, 0) AS th_nilai
+      COALESCE(th.nilai, 0) AS th_nilai,
+      COALESCE(th.capaian_kompetensi, NULL) AS th_capaian_kompetensi
     FROM 
       siswa
     JOIN 
@@ -1581,13 +1585,13 @@ app.get('/nilai/matapelajaran/:id_matapelajaran/:nisn/:semester', (req, res) => 
     JOIN 
       mata_pelajaran ON kelas.id_kelas = mata_pelajaran.id_kelas
     LEFT JOIN 
-      (SELECT id_nilai, nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UTS' AND semester = ?) AS uts ON siswa.nisn = uts.nisn AND mata_pelajaran.id_matapelajaran = uts.id_matapelajaran
+      (SELECT id_nilai, nisn, id_matapelajaran, nilai, capaian_kompetensi FROM nilai WHERE tipe = 'UTS' AND semester = ?) AS uts ON siswa.nisn = uts.nisn AND mata_pelajaran.id_matapelajaran = uts.id_matapelajaran
     LEFT JOIN 
-      (SELECT id_nilai, nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UAS' AND semester = ?) AS uas ON siswa.nisn = uas.nisn AND mata_pelajaran.id_matapelajaran = uas.id_matapelajaran
+      (SELECT id_nilai, nisn, id_matapelajaran, nilai, capaian_kompetensi FROM nilai WHERE tipe = 'UAS' AND semester = ?) AS uas ON siswa.nisn = uas.nisn AND mata_pelajaran.id_matapelajaran = uas.id_matapelajaran
     LEFT JOIN 
-      (SELECT id_nilai, nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UHA' AND semester = ?) AS uha ON siswa.nisn = uha.nisn AND mata_pelajaran.id_matapelajaran = uha.id_matapelajaran
+      (SELECT id_nilai, nisn, id_matapelajaran, nilai, capaian_kompetensi FROM nilai WHERE tipe = 'UHA' AND semester = ?) AS uha ON siswa.nisn = uha.nisn AND mata_pelajaran.id_matapelajaran = uha.id_matapelajaran
     LEFT JOIN 
-      (SELECT id_nilai, nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'TH' AND semester = ?) AS th ON siswa.nisn = th.nisn AND mata_pelajaran.id_matapelajaran = th.id_matapelajaran
+      (SELECT id_nilai, nisn, id_matapelajaran, nilai, capaian_kompetensi FROM nilai WHERE tipe = 'TH' AND semester = ?) AS th ON siswa.nisn = th.nisn AND mata_pelajaran.id_matapelajaran = th.id_matapelajaran
     WHERE 
       mata_pelajaran.id_matapelajaran = ? AND siswa.nisn = ?;
   `;
@@ -1606,16 +1610,17 @@ app.get('/nilai/matapelajaran/:id_matapelajaran/:nisn/:semester', (req, res) => 
       id_matapelajaran: result.id_matapelajaran,
       nama_matapelajaran: result.nama_matapelajaran,
       nilai_seluruh: [
-        { tipe: 'UTS', id_nilai: result.uts_id_nilai, nilai: result.uts_nilai },
-        { tipe: 'UAS', id_nilai: result.uas_id_nilai, nilai: result.uas_nilai },
-        { tipe: 'UHA', id_nilai: result.uha_id_nilai, nilai: result.uha_nilai },
-        { tipe: 'TH', id_nilai: result.th_id_nilai, nilai: result.th_nilai }
+        { tipe: 'UHA', id_nilai: result.uha_id_nilai, nilai: result.uha_nilai, capaian_kompetensi: result.uha_capaian_kompetensi },
+        { tipe: 'TH', id_nilai: result.th_id_nilai, nilai: result.th_nilai, capaian_kompetensi: result.th_capaian_kompetensi },
+        { tipe: 'UTS', id_nilai: result.uts_id_nilai, nilai: result.uts_nilai, capaian_kompetensi: result.uts_capaian_kompetensi },
+        { tipe: 'UAS', id_nilai: result.uas_id_nilai, nilai: result.uas_nilai, capaian_kompetensi: result.uas_capaian_kompetensi },
       ]
     }));
 
     res.json(formattedResults);
   });
 });
+
 
 
 app.get('/nilai/matapelajaran/semester/genap', (req, res) => {
@@ -1679,19 +1684,19 @@ app.get('/nilai/matapelajaran/semester/genap', (req, res) => {
 
 
 app.post('/nilai', (req, res) => {
-  const { id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran } = req.body;
+  const { id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, no_kelas, capaian_kompetensi } = req.body;
 
   // Validasi data input
-  if (!id_nilai || !nisn || !id_matapelajaran || !tipe || !nilai || !semester || !tahun_ajaran) {
-    return res.status(400).json({ error: 'Semua kolom wajib diisi' });
+  if (!id_nilai || !nisn || !id_matapelajaran || !tipe || !nilai || !semester || !tahun_ajaran || !no_kelas) {
+    return res.status(400).json({ error: 'Kolom id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, dan no_kelas wajib diisi' });
   }
 
   const sql = `
-    INSERT INTO nilai (id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO nilai (id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, no_kelas, capaian_kompetensi)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
-  db.query(sql, [id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran], (err, result) => {
+  db.query(sql, [id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, no_kelas, capaian_kompetensi || null], (err, result) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -1699,23 +1704,22 @@ app.post('/nilai', (req, res) => {
   });
 });
 
-
 app.put('/nilai/:id_nilai', (req, res) => {
   const { id_nilai } = req.params;
-  const { nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran } = req.body;
+  const { nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, no_kelas, capaian_kompetensi } = req.body;
 
   // Validasi data input
-  if (!nisn || !id_matapelajaran || !tipe || !nilai || !semester || !tahun_ajaran) {
-    return res.status(400).json({ error: 'Semua kolom wajib diisi' });
+  if (!nisn || !id_matapelajaran || !tipe || !nilai || !semester || !tahun_ajaran || !no_kelas) {
+    return res.status(400).json({ error: 'Kolom nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, dan no_kelas wajib diisi' });
   }
 
   const sql = `
     UPDATE nilai 
-    SET nisn = ?, id_matapelajaran = ?, tipe = ?, nilai = ?, semester = ?, tahun_ajaran = ?
+    SET nisn = ?, id_matapelajaran = ?, tipe = ?, nilai = ?, semester = ?, tahun_ajaran = ?, no_kelas = ?, capaian_kompetensi = ?
     WHERE id_nilai = ?
   `;
 
-  db.query(sql, [nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, id_nilai], (err, result) => {
+  db.query(sql, [nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, no_kelas, capaian_kompetensi || null, id_nilai], (err, result) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -1725,6 +1729,34 @@ app.put('/nilai/:id_nilai', (req, res) => {
     res.json({ message: 'Nilai berhasil diperbarui' });
   });
 });
+
+app.put('/nilai/:id_nilai/capaian_kompetensi', (req, res) => {
+  const { id_nilai } = req.params;
+  const { capaian_kompetensi } = req.body;
+
+  // Validasi data input
+  if (capaian_kompetensi === undefined) {
+    return res.status(400).json({ error: 'Kolom capaian_kompetensi wajib diisi' });
+  }
+
+  const sql = `
+    UPDATE nilai 
+    SET capaian_kompetensi = ?
+    WHERE id_nilai = ?
+  `;
+
+  db.query(sql, [capaian_kompetensi, id_nilai], (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Nilai tidak ditemukan' });
+    }
+    res.json({ message: 'Capaian kompetensi berhasil diperbarui' });
+  });
+});
+
+
 
 app.get('/hafalan/:nip', (req, res) => {
   const { nip } = req.params;
