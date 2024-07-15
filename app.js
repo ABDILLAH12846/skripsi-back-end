@@ -1142,6 +1142,7 @@ app.get('/absensi/:nip/:tanggal', (req, res) => {
         absensi.id_absensi,
         siswa.nisn,
         siswa.nama,
+        kelas.no_kelas,
         COALESCE(absensi.tanggal, ?) AS tanggal,
         COALESCE(absensi.status, 'hadir') AS status
     FROM 
@@ -1166,6 +1167,8 @@ app.get('/absensi/:nip/:tanggal', (req, res) => {
 app.post('/absensi', (req, res) => {
   const { attendanceData } = req.body;
 
+  console.log({attendanceData})
+
   if (!Array.isArray(attendanceData) || attendanceData.length === 0) {
     return res.status(400).json({ error: 'Invalid or empty attendance data array' });
   }
@@ -1175,11 +1178,12 @@ app.post('/absensi', (req, res) => {
     item.tanggal,
     item.status,
     item.deskripsi,
-    item.nisn
+    item.nisn,
+    item.no_kelas
   ]);
 
   const sql = `
-    INSERT INTO absensi (id_absensi, tanggal, status, deskripsi, nisn)
+    INSERT INTO absensi (id_absensi, tanggal, status, deskripsi, nisn, no_kelas)
     VALUES ?
   `;
 
@@ -1192,6 +1196,7 @@ app.post('/absensi', (req, res) => {
     res.status(201).json({ message: 'Multiple attendance records added successfully' });
   });
 });
+
 
 // PUT Endpoint to update multiple attendance records (Optimized approach)
 app.put('/absensi', (req, res) => {
@@ -1860,9 +1865,14 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
       hafalan.bulan,
       hafalan.minggu,
       hafalan.id_hafalan,
-      hafalan.hafalan
+      hafalan.hafalan,
+      kelas.no_kelas
     FROM 
       hafalan
+    JOIN
+      siswa ON siswa.nisn = hafalan.nisn
+    JOIN
+      kelas ON kelas.id_kelas = siswa.id_kelas
     WHERE 
       hafalan.nisn = ? AND hafalan.bulan = ?
     ORDER BY 
@@ -1885,6 +1895,7 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
       if (!bulanEntry) {
         bulanEntry = {
           bulan: row.bulan.toString(),
+          no_kelas: row.no_kelas,
           minggu: [
             { minggu: "1", id_hafalan: null, hafalan: "" },
             { minggu: "2", id_hafalan: null, hafalan: "" },
@@ -1908,6 +1919,7 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
     if (formattedResults.length === 0) {
       formattedResults.push({
         bulan: currentMonth,
+        no_kelas: null,
         minggu: [
           { minggu: "1", id_hafalan: null, hafalan: "" },
           { minggu: "2", id_hafalan: null, hafalan: "" },
@@ -1920,6 +1932,7 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
     res.json({ hafalan: formattedResults });
   });
 });
+
 
 
 
@@ -2024,24 +2037,25 @@ app.get('/hafalan/kelas/:nip', (req, res) => {
 
 
 app.post('/hafalan', (req, res) => {
-  const { id_hafalan, nisn, bulan, minggu, hafalan } = req.body;
+  const { id_hafalan, nisn, bulan, minggu, hafalan, no_kelas } = req.body;
 
-  if (!id_hafalan || !nisn || !bulan || !minggu || !hafalan) {
-    return res.status(400).json({ error: 'Semua kolom wajib diisi' });
+  if (!id_hafalan || !nisn || !bulan || !minggu || !hafalan || !no_kelas) {
+    return res.status(400).json({ error: 'Semua kolom wajib diisi, termasuk no_kelas' });
   }
 
   const sql = `
-    INSERT INTO hafalan (id_hafalan, nisn, bulan, minggu, hafalan)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO hafalan (id_hafalan, nisn, bulan, minggu, hafalan, no_kelas)
+    VALUES (?, ?, ?, ?, ?, ?)
   `;
 
-  db.query(sql, [id_hafalan, nisn, bulan, minggu, hafalan], (err, result) => {
+  db.query(sql, [id_hafalan, nisn, bulan, minggu, hafalan, no_kelas], (err, result) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     res.status(201).json({ message: 'Hafalan berhasil ditambahkan', id: result.insertId });
   });
 });
+
 
 app.put('/hafalan/:id_hafalan', (req, res) => {
   const { id_hafalan } = req.params;
