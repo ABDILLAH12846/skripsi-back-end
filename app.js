@@ -1439,8 +1439,9 @@ app.get('/nilai', (req, res) => {
 
 app.get('/nilai/:nisn', (req, res) => {
   const { nisn } = req.params;
+  const { semester } = req.query;  
 
-  const sql = `
+  let sql = `
     SELECT 
       nilai.*, 
       siswa.nama AS nama_siswa, 
@@ -1455,7 +1456,13 @@ app.get('/nilai/:nisn', (req, res) => {
       nilai.nisn = ?
   `;
 
-  db.query(sql, [nisn], (err, results) => {
+  if (semester) {
+    sql += ` AND nilai.semester = ?`;
+  }
+
+  const queryParams = semester ? [nisn, semester] : [nisn];
+
+  db.query(sql, queryParams, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -2423,7 +2430,30 @@ app.get('/raport/:nisn', (req, res) => {
 });
 
 
+// Punya federick
 
+app.get('/siswa/absensi/:nisn', (req, res) => {
+  const { nisn } = req.params;
+  const sql = `SELECT absensi.* FROM absensi WHERE absensi.nisn = ?`;
+
+  db.query(sql, [nisn], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'No records found for the specified NISN' });
+    }
+    // Format hasil query ke dalam struktur yang diinginkan
+    const formattedResults = results.map(record => ({
+      tanggal: new Date(record.tanggal).toISOString().split('T')[0],
+      status: record.status,
+      description: record.deskripsi,
+      nisn: record.nisn,
+    }));
+
+    res.json(formattedResults);
+  });
+});
 
 
 
