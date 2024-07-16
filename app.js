@@ -39,10 +39,16 @@ app.post('/login', (req, res) => {
   }
 
   const sqlGuru = `
-    SELECT * FROM guru WHERE nip = ? AND password = ?
+    SELECT g.*, k.*
+    FROM guru g
+    JOIN kelas k ON g.nip = k.nip
+    WHERE g.nip = ? AND g.password = ?
   `;
   const sqlSiswa = `
-    SELECT * FROM siswa WHERE nisn = ? AND password = ?
+    SELECT s.*, k.*
+    FROM siswa s
+    JOIN kelas k ON s.id_kelas = k.id_kelas
+    WHERE s.nisn = ? AND s.password = ?
   `;
 
   db.query(sqlGuru, [id, password], (err, results) => {
@@ -56,8 +62,8 @@ app.post('/login', (req, res) => {
 
       res.cookie('token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // Gunakan https di lingkungan produksi
-        maxAge: 3600000 // 1 jam
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 3600000
       });
 
       return res.status(200).json({ message: 'Login berhasil', user: guru, role: 'guru' });
@@ -73,8 +79,8 @@ app.post('/login', (req, res) => {
 
           res.cookie('token', token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production', // Gunakan https di lingkungan produksi
-            maxAge: 3600000 // 1 jam
+            secure: process.env.NODE_ENV === 'production',
+            maxAge: 3600000
           });
 
           return res.status(200).json({ message: 'Login berhasil', user: siswa, role: 'siswa' });
@@ -85,6 +91,7 @@ app.post('/login', (req, res) => {
     }
   });
 });
+
 
 
 
@@ -1948,101 +1955,85 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
 
 app.get('/hafalan/kelas/:nip', (req, res) => {
   const { nip } = req.params;
-  let { bulan } = req.query;
+  let { bulan, no_kelas } = req.query;
 
   // Ambil bulan sekarang jika bulan tidak diberikan
   const currentMonth = bulan ? parseInt(bulan) : new Date().getMonth() + 1;
 
-  // Query untuk mendapatkan NISN siswa berdasarkan NIP kelas
-  const getNisnQuery = `
+  // Query untuk mendapatkan hafalan siswa berdasarkan NIP kelas, bulan, dan no_kelas dari tabel hafalan
+  const getHafalanQuery = `
     SELECT 
-      siswa.nisn
+      siswa.nisn,
+      siswa.nama AS nama_siswa,
+      hafalan.bulan,
+      hafalan.minggu,
+      hafalan.id_hafalan,
+      hafalan.hafalan,
+      hafalan.no_kelas,
+      kelas.tahun_ajaran,
+      hafalan.semester
     FROM 
       kelas
     JOIN 
       siswa ON kelas.id_kelas = siswa.id_kelas
+    LEFT JOIN 
+      hafalan ON siswa.nisn = hafalan.nisn AND hafalan.bulan = ? AND (? IS NULL OR hafalan.no_kelas = ?)
     WHERE 
-      kelas.nip = ?;
+      kelas.nip = ?
+    ORDER BY 
+      hafalan.bulan, hafalan.minggu;
   `;
 
-  db.query(getNisnQuery, [nip], (err, nisnResults) => {
+  db.query(getHafalanQuery, [currentMonth, no_kelas, no_kelas, nip], (err, hafalanResults) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
 
-    if (nisnResults.length === 0) {
-      return res.status(404).json({ message: "No students found for this NIP." });
-    }
+    const groupedResults = [];
 
-    const nisnList = nisnResults.map(row => row.nisn);
-    
-    // Prepare to fetch hafalan data for each NISN
-    const getHafalanQuery = `
-      SELECT 
-        siswa.nisn,
-        siswa.nama AS nama_siswa,
-        hafalan.bulan,
-        hafalan.minggu,
-        hafalan.id_hafalan,
-        hafalan.hafalan
-      FROM 
-        siswa
-      LEFT JOIN 
-        hafalan ON siswa.nisn = hafalan.nisn AND hafalan.bulan = ?
-      WHERE 
-        siswa.nisn IN (?)
-      ORDER BY 
-        hafalan.bulan, hafalan.minggu;
-    `;
+    // Group by NISN and bulan
+    hafalanResults.forEach(row => {
+      let siswaEntry = groupedResults.find(entry => entry.nisn === row.nisn);
 
-    db.query(getHafalanQuery, [currentMonth, nisnList], (err, hafalanResults) => {
-      if (err) {
-        return res.status(500).json({ error: err.message });
+      if (!siswaEntry) {
+        siswaEntry = {
+          nisn: row.nisn,
+          nama_siswa: row.nama_siswa,
+          no_kelas: row.no_kelas,
+          semester: row.semester,
+          hafalan: []
+        };
+        groupedResults.push(siswaEntry);
       }
 
-      const groupedResults = [];
+      let bulanEntry = siswaEntry.hafalan.find(entry => entry.bulan === row.bulan);
 
-      // Group by NISN and bulan
-      hafalanResults.forEach(row => {
-        let siswaEntry = groupedResults.find(entry => entry.nisn === row.nisn);
+      if (!bulanEntry) {
+        bulanEntry = {
+          bulan: row.bulan,
+          minggu: [
+            { minggu: 1, id_hafalan: null, hafalan: "" },
+            { minggu: 2, id_hafalan: null, hafalan: "" },
+            { minggu: 3, id_hafalan: null, hafalan: "" },
+            { minggu: 4, id_hafalan: null, hafalan: "" }
+          ]
+        };
+        siswaEntry.hafalan.push(bulanEntry);
+      }
 
-        if (!siswaEntry) {
-          siswaEntry = {
-            nisn: row.nisn,
-            nama_siswa: row.nama_siswa,
-            hafalan: []
-          };
-          groupedResults.push(siswaEntry);
-        }
-
-        let bulanEntry = siswaEntry.hafalan.find(entry => entry.bulan === row.bulan);
-
-        if (!bulanEntry) {
-          bulanEntry = {
-            bulan: row.bulan,
-            minggu: [
-              { minggu: 1, id_hafalan: null, hafalan: "" },
-              { minggu: 2, id_hafalan: null, hafalan: "" },
-              { minggu: 3, id_hafalan: null, hafalan: "" },
-              { minggu: 4, id_hafalan: null, hafalan: "" }
-            ]
-          };
-          siswaEntry.hafalan.push(bulanEntry);
-        }
-
-        if (row.minggu) {
-          bulanEntry.minggu[row.minggu - 1] = {
-            minggu: row.minggu,
-            id_hafalan: row.id_hafalan,
-            hafalan: row.hafalan || ""
-          };
-        }
-      });
-
-      res.json(groupedResults);
+      if (row.minggu) {
+        bulanEntry.minggu[row.minggu - 1] = {
+          minggu: row.minggu,
+          id_hafalan: row.id_hafalan,
+          hafalan: row.hafalan || ""
+        };
+      }
     });
+
+    res.json(groupedResults);
   });
 });
+
 
 
 
@@ -2407,7 +2398,7 @@ app.get('/raport/:nisn', (req, res) => {
       LEFT JOIN nilai uas ON s.nisn = uas.nisn AND mp.id_matapelajaran = uas.id_matapelajaran AND uas.tipe = 'UAS' AND uas.semester = ?
       LEFT JOIN nilai uha ON s.nisn = uha.nisn AND mp.id_matapelajaran = uha.id_matapelajaran AND uha.tipe = 'UHA' AND uha.semester = ?
       LEFT JOIN nilai th ON s.nisn = th.nisn AND mp.id_matapelajaran = th.id_matapelajaran AND th.tipe = 'TH' AND th.semester = ?
-      WHERE s.nisn = ? AND n.no_kelas = ?
+      WHERE s.nisn = ? AND k.no_kelas = ?  -- Filter berdasarkan nisn dan no_kelas
   `;
 
   db.query(query, [semester, semester, semester, semester, nisn, kelasInt], (err, rows) => {
@@ -2437,9 +2428,14 @@ app.get('/raport/:nisn', (req, res) => {
               row.keterangan = 'TIDAK TUNTAS';
           }
       });
-      res.json(rows);
+
+      // Menghilangkan potensi duplikasi dengan menggunakan Set
+      const uniqueRows = Array.from(new Set(rows.map(a => JSON.stringify(a)))).map(str => JSON.parse(str));
+
+      res.json(uniqueRows);
   });
 });
+
 
 
 
