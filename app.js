@@ -1439,7 +1439,13 @@ app.get('/nilai', (req, res) => {
 
 app.get('/nilai/:nisn', (req, res) => {
   const { nisn } = req.params;
-  const { semester } = req.query;  
+  const { semester, no_kelas } = req.query; 
+
+  const kelasInt = parseInt(no_kelas, 10);
+
+  if (isNaN(kelasInt)) {
+    return res.status(400).json({ error: "Invalid kelas value" });
+  }
 
   let sql = `
     SELECT 
@@ -1453,22 +1459,17 @@ app.get('/nilai/:nisn', (req, res) => {
     JOIN 
       mata_pelajaran ON nilai.id_matapelajaran = mata_pelajaran.id_matapelajaran
     WHERE 
-      nilai.nisn = ?
+      nilai.nisn = ? AND nilai.semester = ? AND nilai.no_kelas = ?
   `;
 
-  if (semester) {
-    sql += ` AND nilai.semester = ?`;
-  }
-
-  const queryParams = semester ? [nisn, semester] : [nisn];
-
-  db.query(sql, queryParams, (err, results) => {
+  db.query(sql, [nisn, semester, kelasInt], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     res.json(results);
   });
 });
+
 
 app.get('/nilai/mapel/:id_matapelajaran', (req, res) => {
   const { id_matapelajaran } = req.params;
@@ -1862,31 +1863,35 @@ app.get('/hafalan/:nip', (req, res) => {
 
 app.get('/hafalan/siswa/:nisn', (req, res) => {
   const { nisn } = req.params;
-  let { bulan } = req.query;
+  let { bulan, no_kelas } = req.query;
+
+  const monthNames = [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+  ];
 
   // Ambil bulan sekarang jika bulan tidak diberikan
   const currentMonth = bulan ? bulan.toString() : (new Date().getMonth() + 1).toString();
+
+  const kelasInt = parseInt(no_kelas, 10);
+  
+  const monthName = monthNames[parseInt(currentMonth) - 1] || "Unknown";
 
   const sql = `
     SELECT 
       hafalan.bulan,
       hafalan.minggu,
       hafalan.id_hafalan,
-      hafalan.hafalan,
-      kelas.no_kelas
+      hafalan.hafalan
     FROM 
       hafalan
-    JOIN
-      siswa ON siswa.nisn = hafalan.nisn
-    JOIN
-      kelas ON kelas.id_kelas = siswa.id_kelas
     WHERE 
-      hafalan.nisn = ? AND hafalan.bulan = ?
+      hafalan.nisn = ? AND hafalan.bulan = ? AND hafalan.no_kelas = ?
     ORDER BY 
       hafalan.bulan, hafalan.minggu;
   `;
 
-  db.query(sql, [nisn, currentMonth], (err, results) => {
+  db.query(sql, [nisn, currentMonth, kelasInt], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -1897,12 +1902,11 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
     // Grup hasil berdasarkan bulan
     results.forEach(row => {
       // Pastikan bulan adalah string
-      let bulanEntry = formattedResults.find(entry => entry.bulan === row.bulan.toString());
+      let bulanEntry = formattedResults.find(entry => entry.bulan === monthNames[parseInt(row.bulan) - 1]);
 
       if (!bulanEntry) {
         bulanEntry = {
-          bulan: row.bulan.toString(),
-          no_kelas: row.no_kelas,
+          bulan: monthNames[parseInt(row.bulan) - 1] || "Unknown",
           minggu: [
             { minggu: "1", id_hafalan: null, hafalan: "" },
             { minggu: "2", id_hafalan: null, hafalan: "" },
@@ -1925,8 +1929,7 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
     // Jika tidak ada hasil dari query, tetap tampilkan bulan dengan nilai default
     if (formattedResults.length === 0) {
       formattedResults.push({
-        bulan: currentMonth,
-        no_kelas: null,
+        bulan: monthName,
         minggu: [
           { minggu: "1", id_hafalan: null, hafalan: "" },
           { minggu: "2", id_hafalan: null, hafalan: "" },
@@ -2363,92 +2366,129 @@ app.get('/filterraport/:nip', (req, res) => {
 });
 
 app.get('/raport/:nisn', (req, res) => {
-    const nisn = req.params.nisn;
-    const semester = req.query.semester;
+  const nisn = req.params.nisn;
+  const { semester, no_kelas } = req.query;
 
-    if (!semester) {
-        return res.status(400).json({ message: 'Semester is required' });
-    }
+  const kelasInt = parseInt(no_kelas, 10);
 
-    const query = `
-        SELECT 
-            mp.nama AS nama_matapelajaran, 
-            COALESCE(uts.nilai, 0) AS UTS,
-            COALESCE(uas.nilai, 0) AS UAS,
-            COALESCE(uha.nilai, 0) AS UHA,
-            COALESCE(th.nilai, 0) AS TH,
-            CASE
-                WHEN COALESCE(uts.nilai, 0) > 92 THEN 'A'
-                WHEN COALESCE(uts.nilai, 0) > 83 THEN 'B'
-                WHEN COALESCE(uts.nilai, 0) > 74 THEN 'C'
-                WHEN COALESCE(uts.nilai, 0) > 64 THEN 'E'  -- Kurangi batas bawah untuk D
-                ELSE 'D'  -- Jika antara 65-74, maka D
-            END AS predikat,
-            CASE
-                WHEN COALESCE(uts.nilai, 0) > 74 THEN 'TUNTAS'
-                ELSE 'TIDAK TUNTAS'
-            END AS keterangan
-        FROM siswa s
-        JOIN mata_pelajaran mp ON s.id_kelas = mp.id_kelas
-        LEFT JOIN nilai uts ON s.nisn = uts.nisn AND mp.id_matapelajaran = uts.id_matapelajaran AND uts.tipe = 'UTS' AND uts.semester = ?
-        LEFT JOIN nilai uas ON s.nisn = uas.nisn AND mp.id_matapelajaran = uas.id_matapelajaran AND uas.tipe = 'UAS' AND uas.semester = ?
-        LEFT JOIN nilai uha ON s.nisn = uha.nisn AND mp.id_matapelajaran = uha.id_matapelajaran AND uha.tipe = 'UHA' AND uha.semester = ?
-        LEFT JOIN nilai th ON s.nisn = th.nisn AND mp.id_matapelajaran = th.id_matapelajaran AND th.tipe = 'TH' AND th.semester = ?
-        WHERE s.nisn = ?
-    `;
+  if (!semester) {
+      return res.status(400).json({ message: 'Semester is required' });
+  }
 
-    db.query(query, [semester, semester, semester, semester, nisn], (err, rows) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        if (rows.length === 0) {
-            return res.status(404).json({ message: 'Siswa tidak ditemukan atau tidak memiliki nilai untuk semester ini' });
-        }
+  if (!no_kelas) {
+      return res.status(400).json({ message: 'Kelas is required' });
+  }
 
-        // Menghitung predikat dan keterangan berdasarkan nilai UTS
-        rows.forEach(row => {
-            if (row.UTS > 92) {
-                row.predikat = 'A';
-                row.keterangan = 'TUNTAS';
-            } else if (row.UTS > 83) {
-                row.predikat = 'B';
-                row.keterangan = 'TUNTAS';
-            } else if (row.UTS > 74) {
-                row.predikat = 'C';
-                row.keterangan = 'TUNTAS';
-            } else if (row.UTS > 64) {  // Nilai antara 65-74 dianggap D
-                row.predikat = 'D';
-                row.keterangan = 'TIDAK TUNTAS';  // Tidak tuntas untuk nilai D
-            } else {
-                row.predikat = 'E';
-                row.keterangan = 'TIDAK TUNTAS';
-            }
-        });
+  const query = `
+      SELECT 
+          mp.nama AS nama_matapelajaran,
+          k.no_kelas,
+          n.capaian_kompetensi,
+          COALESCE(uts.nilai, 0) AS UTS,
+          COALESCE(uas.nilai, 0) AS UAS,
+          COALESCE(uha.nilai, 0) AS UHA,
+          COALESCE(th.nilai, 0) AS TH,
+          CASE
+              WHEN COALESCE(uts.nilai, 0) > 92 THEN 'A'
+              WHEN COALESCE(uts.nilai, 0) > 83 THEN 'B'
+              WHEN COALESCE(uts.nilai, 0) > 74 THEN 'C'
+              WHEN COALESCE(uts.nilai, 0) > 64 THEN 'D'
+              ELSE 'E'
+          END AS predikat,
+          CASE
+              WHEN COALESCE(uts.nilai, 0) > 74 THEN 'TUNTAS'
+              ELSE 'TIDAK TUNTAS'
+          END AS keterangan
+      FROM siswa s
+      JOIN mata_pelajaran mp ON s.id_kelas = mp.id_kelas
+      JOIN kelas k ON s.id_kelas = k.id_kelas
+      LEFT JOIN nilai n ON s.nisn = n.nisn
+      LEFT JOIN nilai uts ON s.nisn = uts.nisn AND mp.id_matapelajaran = uts.id_matapelajaran AND uts.tipe = 'UTS' AND uts.semester = ?
+      LEFT JOIN nilai uas ON s.nisn = uas.nisn AND mp.id_matapelajaran = uas.id_matapelajaran AND uas.tipe = 'UAS' AND uas.semester = ?
+      LEFT JOIN nilai uha ON s.nisn = uha.nisn AND mp.id_matapelajaran = uha.id_matapelajaran AND uha.tipe = 'UHA' AND uha.semester = ?
+      LEFT JOIN nilai th ON s.nisn = th.nisn AND mp.id_matapelajaran = th.id_matapelajaran AND th.tipe = 'TH' AND th.semester = ?
+      WHERE s.nisn = ? AND n.no_kelas = ?
+  `;
 
-        res.json(rows);
-    });
+  db.query(query, [semester, semester, semester, semester, nisn, kelasInt], (err, rows) => {
+      if (err) {
+          return res.status(500).json({ error: err.message });
+      }
+      if (rows.length === 0) {
+          return res.status(404).json({ message: 'Siswa tidak ditemukan atau tidak memiliki nilai untuk semester ini' });
+      }
+
+      // Menghitung predikat dan keterangan berdasarkan nilai UTS
+      rows.forEach(row => {
+          if (row.UTS > 92) {
+              row.predikat = 'A';
+              row.keterangan = 'TUNTAS';
+          } else if (row.UTS > 83) {
+              row.predikat = 'B';
+              row.keterangan = 'TUNTAS';
+          } else if (row.UTS > 74) {
+              row.predikat = 'C';
+              row.keterangan = 'TUNTAS';
+          } else if (row.UTS > 64) {  // Nilai antara 65-74 dianggap D
+              row.predikat = 'D';
+              row.keterangan = 'TIDAK TUNTAS';  // Tidak tuntas untuk nilai D
+          } else {
+              row.predikat = 'E';
+              row.keterangan = 'TIDAK TUNTAS';
+          }
+      });
+      res.json(rows);
+  });
 });
+
 
 
 // Punya federick
 
 app.get('/siswa/absensi/:nisn', (req, res) => {
   const { nisn } = req.params;
-  const sql = `SELECT absensi.* FROM absensi WHERE absensi.nisn = ?`;
+  const { no_kelas } = req.query;
 
-  db.query(sql, [nisn], (err, results) => {
+  // Check if no_kelas is provided
+  if (!no_kelas) {
+    return res.status(400).json({ message: 'No class provided' });
+  }
+
+  const kelasInt = parseInt(no_kelas, 10);
+
+  // Check if the class is a valid number
+  if (isNaN(kelasInt)) {
+    return res.status(400).json({ message: 'Invalid class number' });
+  }
+
+  const sql = `
+  SELECT 
+    a.tanggal,
+    a.status,
+    a.no_kelas,
+    k.tahun_ajaran 
+  FROM 
+    siswa s
+  JOIN 
+    absensi a ON s.nisn = a.nisn
+  LEFT JOIN 
+    kelas k ON s.id_kelas = k.id_kelas
+  WHERE a.nisn = ? AND a.no_kelas = ?
+  `;
+
+  db.query(sql, [nisn, kelasInt], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     if (results.length === 0) {
-      return res.status(404).json({ message: 'No records found for the specified NISN' });
+      return res.status(404).json({ message: 'No records found for the specified NISN and class' });
     }
     // Format hasil query ke dalam struktur yang diinginkan
     const formattedResults = results.map(record => ({
       tanggal: new Date(record.tanggal).toISOString().split('T')[0],
       status: record.status,
-      description: record.deskripsi,
-      nisn: record.nisn,
+      no_kelas: record.no_kelas,
+      tahun_ajaran: record.tahun_ajaran,
     }));
 
     res.json(formattedResults);
