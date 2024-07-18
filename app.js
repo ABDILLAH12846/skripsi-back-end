@@ -122,11 +122,19 @@ app.get('/guru/:nip', (req, res) => {
   const sql = `
     SELECT 
         guru.*,
-        COALESCE(GROUP_CONCAT(mata_pelajaran.nama SEPARATOR ', '), '') AS matapelajaran
+        JSON_ARRAYAGG(
+            JSON_OBJECT(
+                'nama', mata_pelajaran.nama,
+                'no_kelas', kelas.no_kelas,
+                'nama_kelas', kelas.nama_kelas
+            )
+        ) AS matapelajaran
     FROM 
         guru
     LEFT JOIN 
         mata_pelajaran ON guru.nip = mata_pelajaran.nip
+    LEFT JOIN 
+        kelas ON mata_pelajaran.id_kelas = kelas.id_kelas
     WHERE 
         guru.nip = ?
     GROUP BY 
@@ -140,9 +148,12 @@ app.get('/guru/:nip', (req, res) => {
     if (results.length === 0) {
       return res.status(404).json({ message: 'Guru dengan NIP tersebut tidak ditemukan' });
     }
-    res.json(results[0]);
+    const guru = results[0];
+    guru.matapelajaran = JSON.parse(guru.matapelajaran);
+    res.json(guru);
   });
 });
+
 
 app.post('/guru', (req, res) => {
   const { nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK } = req.body;
@@ -202,44 +213,53 @@ app.delete('/guru/:nip', (req, res) => {
 
 
 app.get('/siswa', (req, res) => {
-  const sql = `
-  SELECT 
-    siswa.*,
-    CONCAT(
-      COALESCE(wali.nama, ''), 
-      IF(wali.nama IS NOT NULL, ', ', ''), 
-      COALESCE(ayah.nama, ''), 
-      IF(ayah.nama IS NOT NULL, ', ', ''), 
-      COALESCE(ibu.nama, '')
-    ) AS nama_orangtua,
-    CONCAT(
-      COALESCE(wali.no_telepon, ''), 
-      IF(wali.no_telepon IS NOT NULL, ', ', ''), 
-      COALESCE(ayah.no_telepon, ''), 
-      IF(ayah.no_telepon IS NOT NULL, ', ', ''), 
-      COALESCE(ibu.no_telepon, '')
-    ) AS no_telepon_orangtua,
-    CONCAT(kelas.no_kelas, ' ', kelas.nama_kelas) AS kelas,
-    kelas.tahun_ajaran AS tahun_ajaran
-  FROM 
-    siswa
-  LEFT JOIN 
-    orangtua AS wali ON siswa.id_wali = wali.id_orangtua
-  LEFT JOIN 
-    orangtua AS ayah ON siswa.id_ayah = ayah.id_orangtua
-  LEFT JOIN 
-    orangtua AS ibu ON siswa.id_ibu = ibu.id_orangtua
-  LEFT JOIN
-    kelas ON siswa.id_kelas = kelas.id_kelas;
+  let { status } = req.query; // Mengambil nilai status dari query parameter
+
+  // Tetapkan nilai default jika status tidak disertakan
+  if (!status) {
+    status = 'aktif';
+  }
+
+  let sql = `
+    SELECT 
+      siswa.*,
+      CONCAT(
+        COALESCE(wali.nama, ''), 
+        IF(wali.nama IS NOT NULL, ', ', ''), 
+        COALESCE(ayah.nama, ''), 
+        IF(ayah.nama IS NOT NULL, ', ', ''), 
+        COALESCE(ibu.nama, '')
+      ) AS nama_orangtua,
+      CONCAT(
+        COALESCE(wali.no_telepon, ''), 
+        IF(wali.no_telepon IS NOT NULL, ', ', ''), 
+        COALESCE(ayah.no_telepon, ''), 
+        IF(ayah.no_telepon IS NOT NULL, ', ', ''), 
+        COALESCE(ibu.no_telepon, '')
+      ) AS no_telepon_orangtua,
+      CONCAT(kelas.no_kelas, ' ', kelas.nama_kelas) AS kelas,
+      kelas.tahun_ajaran AS tahun_ajaran
+    FROM 
+      siswa
+    LEFT JOIN 
+      orangtua AS wali ON siswa.id_wali = wali.id_orangtua
+    LEFT JOIN 
+      orangtua AS ayah ON siswa.id_ayah = ayah.id_orangtua
+    LEFT JOIN 
+      orangtua AS ibu ON siswa.id_ibu = ibu.id_orangtua
+    LEFT JOIN
+      kelas ON siswa.id_kelas = kelas.id_kelas
+    WHERE siswa.status = ?
   `;
 
-  db.query(sql, (err, results) => {
+  db.query(sql, [status], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     res.json(results);
   });
 });
+
 
 
 
@@ -434,6 +454,66 @@ app.put('/siswa', (req, res) => {
   const sqlSetNull = `
     UPDATE siswa
     SET id_kelas = NULL, tinggal_kelas = 1
+    WHERE nisn = ?
+  `;
+
+  // Menjalankan update query untuk setiap nisn
+  const queries = nisn_list.map(nisn => {
+    console.log(nisn);
+    return new Promise((resolve, reject) => {
+      if (!nisn.kelas) {
+        // Set id_kelas ke NULL dan tinggal_kelas ke 1 jika nisn adalah "null"
+        db.query(sqlSetNull, [nisn.nisn], (err, results) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(results);
+          }
+        });
+      } else {
+        // Update id_kelas dengan nilai yang diberikan dan tinggal_kelas ke 0 jika nisn tidak "null"
+        db.query(sql, [id_kelas, nisn.nisn], (err, results) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(results);
+          }
+        });
+      }
+    });
+  });
+
+  // Menunggu semua query selesai
+  Promise.all(queries)
+    .then(() => {
+      res.status(200).json({ message: 'Data siswa berhasil diperbarui' });
+    })
+    .catch(err => {
+      res.status(500).json({ error: err.message });
+    });
+});
+
+app.put('/siswa-akhir', (req, res) => {
+  const { id_kelas, nisn_list } = req.body;
+
+  console.log("kelas");
+
+  // Validasi data input
+  if (!id_kelas || !Array.isArray(nisn_list) || nisn_list.length === 0) {
+    return res.status(400).json({ error: 'id_kelas dan nisn_list yang valid wajib diisi' });
+  }
+
+  // SQL query untuk update data siswa
+  const sql = `
+    UPDATE siswa
+    SET id_kelas = ?, status = "aktif"
+    WHERE nisn = ?
+  `;
+
+  // SQL query untuk set id_kelas ke NULL dan tinggal_kelas ke 1
+  const sqlSetNull = `
+    UPDATE siswa
+    SET id_kelas = NULL, status = "non aktif"
     WHERE nisn = ?
   `;
 
@@ -2491,8 +2571,49 @@ app.get('/siswa/absensi/:nisn', (req, res) => {
   });
 });
 
+app.get('/alumni', (req, res) => {
+  const query = 'SELECT * FROM alumni';
 
+  db.query(query, (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(results);
+  });
+});
 
+app.get('/alumni', (req, res) => {
+  const { angkatan } = req.query;
+  const query = 'SELECT * FROM alumni WHERE tahun_ajaran = ?';
+
+  db.query(query, [angkatan], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(results);
+  });
+});
+
+// Endpoint POST untuk menambahkan data ke tabel alumni
+app.post('/alumni', (req, res) => {
+  const {alumniData} = req.body;
+
+  console.log({alumniData})
+
+  // if (!Array.isArray(alumniData) || alumniData.length === 0) {
+  //   return res.status(400).json({ message: 'Body harus berupa list dari data alumni' });
+  // }
+
+  const query = 'INSERT INTO alumni (nisn, nama, tahun_ajaran) VALUES ?';
+  const values = alumniData.map(alumni => [alumni.nisn, alumni.nama, alumni.tahun_ajaran]);
+
+  db.query(query, [values], (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.status(201).json({ message: 'Data alumni berhasil ditambahkan', affectedRows: result.affectedRows, insertId: result.insertId });
+  });
+});
 
 
 // Menjalankan server
