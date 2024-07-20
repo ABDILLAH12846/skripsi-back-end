@@ -5,7 +5,22 @@ const mysql = require('mysql');
 const jwt = require('jsonwebtoken');
 const app = express();
 const port = 8000;
+const CryptoJS = require('crypto-js');
+const multer = require('multer');
+const { Storage } = require('@google-cloud/storage');
+const xlsx = require('xlsx');
+const puppeteer = require('puppeteer');
 
+const storage = new Storage({
+  projectId: "earnest-dogfish-426110-r6",
+  keyFilename: 'abdillah.json', // Ubah sesuai dengan nama file kunci JSON Anda
+});
+
+const bucket = storage.bucket('sma-it-al-izzah');
+
+const multerGoogleStorage = multer({
+  storage: multer.memoryStorage(), // Menggunakan memory storage agar bisa diolah sebagai buffer
+}).single('photo');
 
 const db = mysql.createConnection({
   host: '35.192.154.48', // Nama host dari database Anda
@@ -27,6 +42,20 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(cors());
 
+const secretKey = 'thisisaverysecurekeythatshouldbe32bytes!!';
+
+// Fungsi enkripsi
+function encryptPassword(password) {
+  return CryptoJS.AES.encrypt(password, secretKey).toString();
+}
+
+// Fungsi dekripsi
+function decryptPassword(encryptedPassword) {
+  const bytes = CryptoJS.AES.decrypt(encryptedPassword, secretKey);
+  return bytes.toString(CryptoJS.enc.Utf8);
+}
+
+
 // Route untuk home page
 app.get('/', (req, res) => {
   res.send('Hello, world!');
@@ -34,6 +63,7 @@ app.get('/', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { id, password } = req.body;
+
   if (!id || !password) {
     return res.status(400).json({ error: 'NISN/NIP dan password wajib diisi' });
   }
@@ -42,48 +72,62 @@ app.post('/login', (req, res) => {
     SELECT g.*, k.*
     FROM guru g
     JOIN kelas k ON g.nip = k.nip
-    WHERE g.nip = ? AND g.password = ?
+    WHERE g.nip = ?
   `;
   const sqlSiswa = `
     SELECT s.*, k.*
     FROM siswa s
     JOIN kelas k ON s.id_kelas = k.id_kelas
-    WHERE s.nisn = ? AND s.password = ?
+    WHERE s.nisn = ?
   `;
 
-  db.query(sqlGuru, [id, password], (err, results) => {
+  // Cek di tabel guru
+  db.query(sqlGuru, [id], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
 
     if (results.length > 0) {
       const guru = results[0];
-      const token = jwt.sign({ id: guru.nip, role: 'guru' }, "secret", { expiresIn: '1h' });
+      const decryptedPassword = decryptPassword(guru.password);
 
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 3600000
-      });
+      if (decryptedPassword === password) {
+        const token = jwt.sign({ id: guru.nip, role: 'guru' }, "secret", { expiresIn: '1h' });
 
-      return res.status(200).json({ message: 'Login berhasil', user: guru, role: 'guru' });
+        res.cookie('token', token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          maxAge: 3600000
+        });
+
+        return res.status(200).json({ message: 'Login berhasil', user: guru, role: 'guru' });
+      } else {
+        return res.status(401).json({ error: 'Password salah' });
+      }
     } else {
-      db.query(sqlSiswa, [id, password], (err, results) => {
+      // Cek di tabel siswa
+      db.query(sqlSiswa, [id], (err, results) => {
         if (err) {
           return res.status(500).json({ error: err.message });
         }
 
         if (results.length > 0) {
           const siswa = results[0];
-          const token = jwt.sign({ id: siswa.nisn, role: 'siswa' }, "secret", { expiresIn: '1h' });
+          const decryptedPassword = decryptPassword(siswa.password);
 
-          res.cookie('token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            maxAge: 3600000
-          });
+          if (decryptedPassword === password) {
+            const token = jwt.sign({ id: siswa.nisn, role: 'siswa' }, "secret", { expiresIn: '1h' });
 
-          return res.status(200).json({ message: 'Login berhasil', user: siswa, role: 'siswa' });
+            res.cookie('token', token, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              maxAge: 3600000
+            });
+
+            return res.status(200).json({ message: 'Login berhasil', user: siswa, role: 'siswa' });
+          } else {
+            return res.status(401).json({ error: 'Password salah' });
+          }
         } else {
           return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
         }
@@ -92,6 +136,92 @@ app.post('/login', (req, res) => {
   });
 });
 
+app.post('/export', (req, res) => {
+  const data = req.body;
+
+  if (!data || !Array.isArray(data)) {
+    return res.status(400).json({ message: 'Invalid data' });
+  }
+
+  // Buat worksheet dari data
+  const worksheet = xlsx.utils.json_to_sheet(data);
+
+  // Buat workbook dan tambahkan worksheet
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(workbook, worksheet, 'Data Siswa');
+
+  // Convert workbook ke buffer
+  const buffer = xlsx.write(workbook, { type: 'buffer' });
+
+  // Set headers untuk mendownload file Excel
+  res.setHeader('Content-Disposition', 'attachment; filename="data-siswa.xlsx"');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+  // Kirim buffer sebagai respon
+  res.send(buffer);
+});
+
+app.post('/export-pdf', async (req, res) => {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+
+  try {
+    const { htmlPages } = req.body;
+
+    if (!htmlPages || !Array.isArray(htmlPages)) {
+      return res.status(400).json({ message: 'Invalid data' });
+    }
+
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+
+    const pdfBuffers = [];
+
+    for (const html of htmlPages) {
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+      const pdfBuffer = await page.pdf({ format: 'A4' });
+      pdfBuffers.push(pdfBuffer);
+    }
+
+    await browser.close();
+
+    const mergedPdfBuffer = Buffer.concat(pdfBuffers);
+
+    res.setHeader('Content-Disposition', 'attachment; filename="export.pdf"');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.send(mergedPdfBuffer);
+  } catch (error) {
+    res.status(500).json({ message: 'Error generating PDF', error: error.message });
+  }
+});
+
+
+app.post('/upload', multerGoogleStorage, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const imageBuffer = req.file.buffer;
+    const fileName = Date.now() + '.jpg'; // Nama file bisa disesuaikan
+
+    // Simpan file ke Google Cloud Storage
+    const file = bucket.file(fileName);
+    await file.save(imageBuffer, {
+      metadata: { contentType: 'image/jpeg' }, // Sesuaikan dengan jenis file yang diunggah
+    });
+
+    // Dapatkan URL publik dari file yang disimpan
+    const url = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+    // Contoh menyimpan URL ke database atau memberikan respons
+    res.json({ message: 'Upload successful', url });
+  } catch (error) {
+    console.error('Error uploading to Google Cloud Storage:', error);
+    res.status(500).json({ message: 'Unable to upload image', error: error.message });
+  }
+});
 
 
 
@@ -148,21 +278,37 @@ app.get('/guru/:nip', (req, res) => {
     if (results.length === 0) {
       return res.status(404).json({ message: 'Guru dengan NIP tersebut tidak ditemukan' });
     }
+    
+    // Ambil data guru
     const guru = results[0];
+    
+    // Dekripsi password jika ada
+    if (guru.password) {
+      guru.password = decryptPassword(guru.password);
+    }
+    
+    // Parse matapelajaran jika ada
     guru.matapelajaran = JSON.parse(guru.matapelajaran);
+    
     res.json(guru);
   });
 });
 
 
+
+
 app.post('/guru', (req, res) => {
-  const { nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK } = req.body;
+  const { nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK, url } = req.body;
+
+  // Encrypt the password
+  const encryptedPassword = encryptPassword(password);
+
   const sql = `
-    INSERT INTO guru (nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO guru (nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK, url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   
-  db.query(sql, [nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK], (err, results) => {
+  db.query(sql, [nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan, encryptedPassword, tanggal_mulai_tugas, status, valid, NIK, No_KK, url], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -170,16 +316,30 @@ app.post('/guru', (req, res) => {
   });
 });
 
+
+
 app.put('/guru/:nip', (req, res) => {
   const { nip } = req.params;
-  const { nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK } = req.body;
+  const { nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK, url } = req.body;
+
+  // Enkripsi password jika ada
+  const encryptedPassword = password ? encryptPassword(password) : null;
+
   const sql = `
     UPDATE guru
-    SET nama = ?, nuptk = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, status_kepegawaian = ?, jenjang = ?, jurusan = ?, jabatan = ?, password = ?, tanggal_mulai_tugas = ?, status = ?, valid = ?, NIK = ?, No_KK = ?
+    SET nama = ?, nuptk = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, status_kepegawaian = ?, jenjang = ?, jurusan = ?, jabatan = ?, password = ?, tanggal_mulai_tugas = ?, status = ?, valid = ?, NIK = ?, No_KK = ?, url = ?
     WHERE nip = ?
   `;
-  
-  db.query(sql, [nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK, nip], (err, results) => {
+
+  // Gunakan array parameter yang berbeda tergantung pada apakah password diberikan
+  const queryParams = [nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, encryptedPassword, tanggal_mulai_tugas, status, valid, NIK, No_KK, url, nip];
+
+  // Hapus password dari array jika tidak diberikan
+  if (!password) {
+    queryParams.splice(13, 1); // Sesuaikan indeks berdasarkan posisi password
+  }
+
+  db.query(sql, queryParams, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -189,6 +349,9 @@ app.put('/guru/:nip', (req, res) => {
     res.json({ message: 'Data guru berhasil diperbarui' });
   });
 });
+
+
+
 
 
 
@@ -213,13 +376,14 @@ app.delete('/guru/:nip', (req, res) => {
 
 
 app.get('/siswa', (req, res) => {
-  let { status } = req.query; // Mengambil nilai status dari query parameter
+  let { status, search } = req.query; // Mengambil nilai status dan search dari query parameter
 
   // Tetapkan nilai default jika status tidak disertakan
   if (!status) {
     status = 'aktif';
   }
 
+  // SQL query dasar
   let sql = `
     SELECT 
       siswa.*,
@@ -252,7 +416,22 @@ app.get('/siswa', (req, res) => {
     WHERE siswa.status = ?
   `;
 
-  db.query(sql, [status], (err, results) => {
+  // Jika parameter search disertakan, tambahkan kondisi pencarian berdasarkan nama
+  if (search) {
+    sql += ` AND siswa.nama LIKE ?`;
+  }
+
+  // Parameter untuk query
+  let queryParams = [status];
+
+  // Tambahkan parameter pencarian jika ada
+  if (search) {
+    const searchPattern = `%${search}%`;
+    queryParams.push(searchPattern);
+  }
+
+  // Eksekusi query
+  db.query(sql, queryParams, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -265,14 +444,19 @@ app.get('/siswa', (req, res) => {
 
 
 
+
 app.post('/siswa', (req, res) => {
-  const { nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, password, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid } = req.body;
+  const { nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, password, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url } = req.body;
+
+  // Enkripsi password
+  const encryptedPassword = encryptPassword(password);
+
   const sql = `
-    INSERT INTO siswa (nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, password, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO siswa (nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, password, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   
-  db.query(sql, [nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, password, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid], (err, results) => {
+  db.query(sql, [nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, encryptedPassword, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -280,19 +464,32 @@ app.post('/siswa', (req, res) => {
   });
 });
 
-
-
-
 app.put('/siswa/:nisn', (req, res) => {
   const { nisn } = req.params;
-  const { nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password, id_wali, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid } = req.body;
+  const { nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password, id_wali, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url } = req.body;
+
+  // Enkripsi password jika ada
+  const encryptedPassword = password ? encryptPassword(password) : null;
+
   const sql = `
     UPDATE siswa
-    SET nama = ?, NIPD = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, id_kelas = ?, password = ?, id_wali = ?, id_ayah = ?, id_ibu = ?, No_KK = ?, NIK = ?, status = ?, terdaftar_sebagai = ?, tanggal_masuk = ?, valid = ?
+    SET nama = ?, NIPD = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, id_kelas = ?, password = ?, id_wali = ?, id_ayah = ?, id_ibu = ?, No_KK = ?, NIK = ?, status = ?, terdaftar_sebagai = ?, tanggal_masuk = ?, valid = ?, url = ?
     WHERE nisn = ?
   `;
-  
-  db.query(sql, [nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password, id_wali, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, nisn], (err, results) => {
+
+  // Buat array parameter query sesuai dengan apakah password disertakan atau tidak
+  const queryParams = [
+    nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas,
+    password ? encryptedPassword : null, // jika password tidak diberikan, gunakan null
+    id_wali, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url, nisn
+  ];
+
+  // Hapus parameter password dari array jika tidak diberikan
+  if (!password) {
+    queryParams.splice(9, 1); // Sesuaikan indeks berdasarkan posisi password
+  }
+
+  db.query(sql, queryParams, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -302,6 +499,9 @@ app.put('/siswa/:nisn', (req, res) => {
     res.json({ message: 'Data siswa berhasil diperbarui' });
   });
 });
+
+
+
 
 
 
@@ -345,6 +545,7 @@ app.get('/siswa/:nisn', (req, res) => {
         siswa.tanggal_masuk,
         siswa.valid,
         siswa.terdaftar_sebagai,
+        siswa.url,
         wali.nama AS wali_nama,
         wali.alamat AS wali_alamat,
         wali.no_telepon AS wali_no_telepon,
@@ -407,6 +608,9 @@ app.get('/siswa/:nisn', (req, res) => {
     addOrangtua(siswa.ayah_nama, siswa.ayah_alamat, siswa.ayah_no_telepon, siswa.ayah_status, siswa.ayah_pekerjaan, siswa.ayah_gaji);
     addOrangtua(siswa.ibu_nama, siswa.ibu_alamat, siswa.ibu_no_telepon, siswa.ibu_status, siswa.ibu_pekerjaan, siswa.ibu_gaji);
 
+    // Dekripsi password jika ada
+    const decryptedPassword = siswa.password ? decryptPassword(siswa.password) : null;
+
     res.json({
       nisn: siswa.nisn,
       nama: siswa.nama,
@@ -417,7 +621,7 @@ app.get('/siswa/:nisn', (req, res) => {
       tanggal_lahir: siswa.tanggal_lahir,
       alamat: siswa.alamat,
       no_telepon: siswa.no_telepon,
-      password: siswa.password,
+      password: decryptedPassword,
       No_KK: siswa.No_KK,
       NIK: siswa.NIK,
       status: siswa.status,
@@ -426,10 +630,12 @@ app.get('/siswa/:nisn', (req, res) => {
       terdaftar_sebagai: siswa.terdaftar_sebagai,
       orangtua: orangtua,
       kelas: siswa.kelas,
-      tahun_ajaran: siswa.tahun_ajaran
+      tahun_ajaran: siswa.tahun_ajaran,
+      url: siswa.url,
     });
   });
 });
+
 
 
 
