@@ -71,19 +71,20 @@ app.post('/login', (req, res) => {
   const sqlGuru = `
     SELECT g.*, k.*
     FROM guru g
-    JOIN kelas k ON g.nip = k.nip
+    LEFT JOIN kelas k ON g.nip = k.nip
     WHERE g.nip = ?
   `;
   const sqlSiswa = `
     SELECT s.*, k.*
     FROM siswa s
-    JOIN kelas k ON s.id_kelas = k.id_kelas
+    LEFT JOIN kelas k ON s.id_kelas = k.id_kelas
     WHERE s.nisn = ?
   `;
 
   // Cek di tabel guru
-  db.query(sqlGuru, [id], (err, results) => {
+  db.query(sqlGuru, [id], (err, results) => { // Menggunakan `id` yang diterima dari `req.body`
     if (err) {
+      console.error('Error querying guru table:', err);
       return res.status(500).json({ error: err.message });
     }
 
@@ -105,15 +106,23 @@ app.post('/login', (req, res) => {
         return res.status(401).json({ error: 'Password salah' });
       }
     } else {
+      console.log("Guru tidak ditemukan, cek di tabel siswa");
+      
       // Cek di tabel siswa
       db.query(sqlSiswa, [id], (err, results) => {
         if (err) {
+          console.error('Error querying siswa table:', err);
           return res.status(500).json({ error: err.message });
         }
+        console.log({sqlSiswa})
+
+        console.log("Hasil query siswa:", results); // Logging hasil query
 
         if (results.length > 0) {
           const siswa = results[0];
           const decryptedPassword = decryptPassword(siswa.password);
+
+          console.log("Password didekripsi:", decryptedPassword); // Logging password didekripsi
 
           if (decryptedPassword === password) {
             const token = jwt.sign({ id: siswa.nisn, role: 'siswa' }, "secret", { expiresIn: '1h' });
@@ -135,6 +144,7 @@ app.post('/login', (req, res) => {
     }
   });
 });
+
 
 app.post('/export', (req, res) => {
   const data = req.body;
