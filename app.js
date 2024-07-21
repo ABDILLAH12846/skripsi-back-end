@@ -13,7 +13,7 @@ const puppeteer = require('puppeteer');
 
 const storage = new Storage({
   projectId: "earnest-dogfish-426110-r6",
-  keyFilename: 'abdillah.json', // Ubah sesuai dengan nama file kunci JSON Anda
+  keyFilename: 'teams.json', // Ubah sesuai dengan nama file kunci JSON Anda
 });
 
 const bucket = storage.bucket('sma-it-al-izzah');
@@ -2185,7 +2185,8 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
       hafalan.bulan,
       hafalan.minggu,
       hafalan.id_hafalan,
-      hafalan.hafalan
+      hafalan.hafalan,
+      hafalan.no_kelas
     FROM 
       hafalan
     WHERE 
