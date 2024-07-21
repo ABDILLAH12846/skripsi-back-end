@@ -2164,6 +2164,44 @@ app.get('/hafalan/:nip', (req, res) => {
 });
 
 
+app.get('/siswa/hafalan/:nisn', (req, res) => {
+  const { nisn } = req.params;
+  let { no_kelas } = req.query;
+
+  const kelasInt = parseInt(no_kelas, 10);
+
+  const monthNames = [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+  ];
+
+  const sql = `
+    SELECT 
+      hafalan.*
+    FROM 
+      hafalan
+    WHERE 
+      hafalan.nisn = ? AND hafalan.no_kelas = ?
+  `;
+
+  db.query(sql, [nisn, kelasInt], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    const formattedResults = results.map(row => {
+      const monthIndex = parseInt(row.bulan, 10) - 1;
+      return {
+        ...row,
+        bulan: monthNames[monthIndex] || "Unknown"
+      };
+    });
+
+    res.json(formattedResults);
+  });
+});
+
+
 app.get('/hafalan/siswa/:nisn', (req, res) => {
   const { nisn } = req.params;
   let { bulan, no_kelas } = req.query;
@@ -2246,9 +2284,6 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
     res.json({ hafalan: formattedResults });
   });
 });
-
-
-
 
 app.get('/hafalan/kelas/:nip', (req, res) => {
   const { nip } = req.params;
@@ -2660,76 +2695,101 @@ app.get('/raport/:nisn', (req, res) => {
   const kelasInt = parseInt(no_kelas, 10);
 
   if (!semester) {
-      return res.status(400).json({ message: 'Semester is required' });
+    return res.status(400).json({ message: 'Semester is required' });
   }
 
   if (!no_kelas) {
-      return res.status(400).json({ message: 'Kelas is required' });
+    return res.status(400).json({ message: 'Kelas is required' });
   }
 
-  const query = `
-      SELECT 
-          mp.nama AS nama_matapelajaran,
-          k.no_kelas,
-          n.capaian_kompetensi,
-          COALESCE(uts.nilai, 0) AS UTS,
-          COALESCE(uas.nilai, 0) AS UAS,
-          COALESCE(uha.nilai, 0) AS UHA,
-          COALESCE(th.nilai, 0) AS TH,
-          CASE
-              WHEN COALESCE(uts.nilai, 0) > 92 THEN 'A'
-              WHEN COALESCE(uts.nilai, 0) > 83 THEN 'B'
-              WHEN COALESCE(uts.nilai, 0) > 74 THEN 'C'
-              WHEN COALESCE(uts.nilai, 0) > 64 THEN 'D'
-              ELSE 'E'
-          END AS predikat,
-          CASE
-              WHEN COALESCE(uts.nilai, 0) > 74 THEN 'TUNTAS'
-              ELSE 'TIDAK TUNTAS'
-          END AS keterangan
-      FROM siswa s
-      JOIN mata_pelajaran mp ON s.id_kelas = mp.id_kelas
-      JOIN kelas k ON s.id_kelas = k.id_kelas
-      LEFT JOIN nilai n ON s.nisn = n.nisn
-      LEFT JOIN nilai uts ON s.nisn = uts.nisn AND mp.id_matapelajaran = uts.id_matapelajaran AND uts.tipe = 'UTS' AND uts.semester = ?
-      LEFT JOIN nilai uas ON s.nisn = uas.nisn AND mp.id_matapelajaran = uas.id_matapelajaran AND uas.tipe = 'UAS' AND uas.semester = ?
-      LEFT JOIN nilai uha ON s.nisn = uha.nisn AND mp.id_matapelajaran = uha.id_matapelajaran AND uha.tipe = 'UHA' AND uha.semester = ?
-      LEFT JOIN nilai th ON s.nisn = th.nisn AND mp.id_matapelajaran = th.id_matapelajaran AND th.tipe = 'TH' AND th.semester = ?
-      WHERE s.nisn = ? AND k.no_kelas = ?  -- Filter berdasarkan nisn dan no_kelas
+  const nilaiQuery = `
+    SELECT 
+        mp.nama AS nama_matapelajaran,
+        n.capaian_kompetensi,
+        COALESCE(uts.nilai, 0) AS UTS,
+        COALESCE(uas.nilai, 0) AS UAS,
+        COALESCE(uha.nilai, 0) AS UHA,
+        COALESCE(th.nilai, 0) AS TH
+    FROM siswa s
+    JOIN mata_pelajaran mp ON s.id_kelas = mp.id_kelas
+    LEFT JOIN nilai n ON s.nisn = n.nisn
+    LEFT JOIN absensi a ON s.nisn = a.nisn
+    LEFT JOIN nilai uts ON s.nisn = uts.nisn AND mp.id_matapelajaran = uts.id_matapelajaran AND uts.tipe = 'UTS' AND uts.semester = ?
+    LEFT JOIN nilai uas ON s.nisn = uas.nisn AND mp.id_matapelajaran = uas.id_matapelajaran AND uas.tipe = 'UAS' AND uas.semester = ?
+    LEFT JOIN nilai uha ON s.nisn = uha.nisn AND mp.id_matapelajaran = uha.id_matapelajaran AND uha.tipe = 'UHA' AND uha.semester = ?
+    LEFT JOIN nilai th ON s.nisn = th.nisn AND mp.id_matapelajaran = th.id_matapelajaran AND th.tipe = 'TH' AND th.semester = ?
+    WHERE s.nisn = ? AND a.no_kelas = ? AND a.semester = ?
+    GROUP BY mp.nama, n.capaian_kompetensi, uts.nilai, uas.nilai, uha.nilai, th.nilai
   `;
 
-  db.query(query, [semester, semester, semester, semester, nisn, kelasInt], (err, rows) => {
+  const absensiQuery = `
+    SELECT
+      COALESCE(SUM(CASE WHEN a.status = 'hadir' THEN 1 ELSE 0 END), 0) AS hadir,
+      COALESCE(SUM(CASE WHEN a.status = 'sakit' THEN 1 ELSE 0 END), 0) AS sakit,
+      COALESCE(SUM(CASE WHEN a.status = 'absen' THEN 1 ELSE 0 END), 0) AS absen
+    FROM absensi a
+    WHERE a.nisn = ? AND a.no_kelas = ? AND a.semester = ?
+  `;
+
+  db.query(nilaiQuery, [semester, semester, semester, semester, nisn, kelasInt, semester], (err, nilaiRows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (nilaiRows.length === 0) {
+      return res.json({ message: 'No available data' });
+    }
+
+    db.query(absensiQuery, [nisn, kelasInt, semester], (err, absensiRows) => {
       if (err) {
-          return res.status(500).json({ error: err.message });
-      }
-      if (rows.length === 0) {
-          return res.status(404).json({ message: 'Siswa tidak ditemukan atau tidak memiliki nilai untuk semester ini' });
+        return res.status(500).json({ error: err.message });
       }
 
-      // Menghitung predikat dan keterangan berdasarkan nilai UTS
-      rows.forEach(row => {
-          if (row.UTS > 92) {
-              row.predikat = 'A';
-              row.keterangan = 'TUNTAS';
-          } else if (row.UTS > 83) {
-              row.predikat = 'B';
-              row.keterangan = 'TUNTAS';
-          } else if (row.UTS > 74) {
-              row.predikat = 'C';
-              row.keterangan = 'TUNTAS';
-          } else if (row.UTS > 64) {  // Nilai antara 65-74 dianggap D
-              row.predikat = 'D';
-              row.keterangan = 'TIDAK TUNTAS';  // Tidak tuntas untuk nilai D
-          } else {
-              row.predikat = 'E';
-              row.keterangan = 'TIDAK TUNTAS';
-          }
+      if (absensiRows.length === 0) {
+        return res.json({ message: 'No available data' });
+      }
+
+      const absensi = absensiRows[0];
+
+      // Process rows to calculate predikat and keterangan
+      const processedRows = nilaiRows.map(row => {
+        const uts = row.UTS;
+        let predikat, keterangan;
+
+        if (uts > 92) {
+          predikat = 'A';
+          keterangan = 'TUNTAS';
+        } else if (uts > 83) {
+          predikat = 'B';
+          keterangan = 'TUNTAS';
+        } else if (uts > 74) {
+          predikat = 'C';
+          keterangan = 'TUNTAS';
+        } else if (uts > 64) {
+          predikat = 'D';
+          keterangan = 'TIDAK TUNTAS';
+        } else {
+          predikat = 'E';
+          keterangan = 'TIDAK TUNTAS';
+        }
+
+        return {
+          nama_matapelajaran: row.nama_matapelajaran,
+          capaian_kompetensi: row.capaian_kompetensi,
+          UTS: uts,
+          UAS: row.UAS,
+          UHA: row.UHA,
+          TH: row.TH,
+          predikat: predikat,
+          keterangan: keterangan,
+          hadir: absensi.hadir,
+          sakit: absensi.sakit,
+          absen: absensi.absen
+        };
       });
 
-      // Menghilangkan potensi duplikasi dengan menggunakan Set
-      const uniqueRows = Array.from(new Set(rows.map(a => JSON.stringify(a)))).map(str => JSON.parse(str));
-
-      res.json(uniqueRows);
+      res.json(processedRows);
+    });
   });
 });
 
