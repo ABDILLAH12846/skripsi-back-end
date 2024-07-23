@@ -2702,7 +2702,7 @@ app.get('/raport/:nisn', (req, res) => {
     return res.status(400).json({ message: 'Kelas is required' });
   }
 
-  const nilaiQuery = `
+  const query = `
     SELECT 
         mp.nama AS nama_matapelajaran,
         n.capaian_kompetensi,
@@ -2722,16 +2722,7 @@ app.get('/raport/:nisn', (req, res) => {
     GROUP BY mp.nama, n.capaian_kompetensi, uts.nilai, uas.nilai, uha.nilai, th.nilai
   `;
 
-  const absensiQuery = `
-    SELECT
-      COALESCE(SUM(CASE WHEN a.status = 'hadir' THEN 1 ELSE 0 END), 0) AS hadir,
-      COALESCE(SUM(CASE WHEN a.status = 'sakit' THEN 1 ELSE 0 END), 0) AS sakit,
-      COALESCE(SUM(CASE WHEN a.status = 'absen' THEN 1 ELSE 0 END), 0) AS absen
-    FROM absensi a
-    WHERE a.nisn = ? AND a.no_kelas = ? AND a.semester = ?
-  `;
-
-  db.query(nilaiQuery, [semester, semester, semester, semester, nisn, kelasInt, semester], (err, nilaiRows) => {
+  db.query(query, [semester, semester, semester, semester, nisn, kelasInt, semester], (err, nilaiRows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -2739,57 +2730,119 @@ app.get('/raport/:nisn', (req, res) => {
     if (nilaiRows.length === 0) {
       return res.json({ message: 'No available data' });
     }
+      
+    const processedRows = nilaiRows.map(row => {
+      const uts = row.UTS;
+      let predikat, keterangan;
 
-    db.query(absensiQuery, [nisn, kelasInt, semester], (err, absensiRows) => {
-      if (err) {
-        return res.status(500).json({ error: err.message });
+      if (uts > 92) {
+        predikat = 'A';
+        keterangan = 'TUNTAS';
+      } else if (uts > 83) {
+        predikat = 'B';
+        keterangan = 'TUNTAS';
+      } else if (uts > 74) {
+        predikat = 'C';
+        keterangan = 'TUNTAS';
+      } else if (uts > 64) {
+        predikat = 'D';
+        keterangan = 'TIDAK TUNTAS';
+      } else {
+        predikat = 'E';
+        keterangan = 'TIDAK TUNTAS';
       }
 
-      if (absensiRows.length === 0) {
-        return res.json({ message: 'No available data' });
-      }
-
-      const absensi = absensiRows[0];
-
-      // Process rows to calculate predikat and keterangan
-      const processedRows = nilaiRows.map(row => {
-        const uts = row.UTS;
-        let predikat, keterangan;
-
-        if (uts > 92) {
-          predikat = 'A';
-          keterangan = 'TUNTAS';
-        } else if (uts > 83) {
-          predikat = 'B';
-          keterangan = 'TUNTAS';
-        } else if (uts > 74) {
-          predikat = 'C';
-          keterangan = 'TUNTAS';
-        } else if (uts > 64) {
-          predikat = 'D';
-          keterangan = 'TIDAK TUNTAS';
-        } else {
-          predikat = 'E';
-          keterangan = 'TIDAK TUNTAS';
-        }
-
-        return {
-          nama_matapelajaran: row.nama_matapelajaran,
-          capaian_kompetensi: row.capaian_kompetensi,
-          UTS: uts,
-          UAS: row.UAS,
-          UHA: row.UHA,
-          TH: row.TH,
-          predikat: predikat,
-          keterangan: keterangan,
-          hadir: absensi.hadir,
-          sakit: absensi.sakit,
-          absen: absensi.absen
-        };
-      });
-
-      res.json(processedRows);
+      return {
+        nama_matapelajaran: row.nama_matapelajaran,
+        capaian_kompetensi: row.capaian_kompetensi,
+        UTS: uts,
+        UAS: row.UAS,
+        UHA: row.UHA,
+        TH: row.TH,
+        predikat: predikat,
+        keterangan: keterangan,
+      };
     });
+    
+    res.json(processedRows);
+  });
+});
+
+app.get('/rapor/:nisn', (req,res) => {
+  const nisn = req.params.nisn;
+  const { semester, no_kelas } = req.query;
+
+  const kelasInt = parseInt(no_kelas, 10);
+
+  if (!semester) {
+    return res.status(400).json({ message: 'Semester is required' });
+  }
+
+  if (!no_kelas) {
+    return res.status(400).json({ message: 'Kelas is required' });
+  }
+
+  const query = `
+  SELECT
+    so.id_sosial,
+    so.sabar,
+    so.jujur,
+    so.amanah,
+    so.tawakkal,
+    so.empati,
+    so.disiplin,
+    so.kerjasama,
+    so.nilai_konklusi AS nilai_sosial,
+    so.deskripsi AS deskripsi_sosial,
+    sp.id_spiritual,
+    sp.sholat_fardhu,
+    sp.sholat_dhuha,
+    sp.sholat_tahajud,
+    sp.sunnah_rawatib,
+    sp.tilawah_quran,
+    sp.shaum_sunnah,
+    sp.shodaqoh,
+    sp.nilai_konklusi AS nilai_spiritual,
+    sp.deskripsi AS deskripsi_spiritual,
+    COALESCE(SUM(CASE WHEN a.status = 'hadir' THEN 1 ELSE 0 END), 0) AS hadir,
+    COALESCE(SUM(CASE WHEN a.status = 'sakit' THEN 1 ELSE 0 END), 0) AS sakit,
+    COALESCE(SUM(CASE WHEN a.status = 'absen' THEN 1 ELSE 0 END), 0) AS absen
+  FROM absensi a
+  JOIN sikap_sosial so ON a.nisn = so.nisn
+  LEFT JOIN sikap_spiritual sp ON a.nisn = sp.nisn
+  WHERE a.nisn = ? AND a.no_kelas = ? AND a.semester = ?
+  GROUP BY
+      so.id_sosial,
+      so.sabar,
+      so.jujur,
+      so.amanah,
+      so.tawakkal,
+      so.empati,
+      so.disiplin,
+      so.kerjasama,
+      so.nilai_konklusi,
+      so.deskripsi,
+      sp.id_spiritual,
+      sp.sholat_fardhu,
+      sp.sholat_dhuha,
+      sp.sholat_tahajud,
+      sp.sunnah_rawatib,
+      sp.tilawah_quran,
+      sp.shaum_sunnah,
+      sp.shodaqoh,
+      sp.nilai_konklusi,
+      sp.deskripsi
+  `
+  db.query(query, [nisn, kelasInt, semester], (err,results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (results.length === 0) {
+      return res.json({ message: 'No available data' });
+    }
+
+    res.json(results)
   });
 });
 
