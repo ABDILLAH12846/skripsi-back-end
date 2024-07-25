@@ -69,20 +69,20 @@ app.post('/login', (req, res) => {
   }
 
   const sqlGuru = `
-    SELECT g.*, k.*
+    SELECT g.*, k.id_kelas, k.no_kelas, k.nama_kelas, k.tahun_ajaran
     FROM guru g
     LEFT JOIN kelas k ON g.nip = k.nip
     WHERE g.nip = ?
   `;
   const sqlSiswa = `
-    SELECT s.*, k.*
+    SELECT s.*, k.id_kelas, k.no_kelas, k.nama_kelas, k.tahun_ajaran
     FROM siswa s
     LEFT JOIN kelas k ON s.id_kelas = k.id_kelas
     WHERE s.nisn = ?
   `;
 
-  // Cek di tabel guru
-  db.query(sqlGuru, [id], (err, results) => { // Menggunakan `id` yang diterima dari `req.body`
+  // Check in guru table
+  db.query(sqlGuru, [id], (err, results) => {
     if (err) {
       console.error('Error querying guru table:', err);
       return res.status(500).json({ error: err.message });
@@ -108,21 +108,16 @@ app.post('/login', (req, res) => {
     } else {
       console.log("Guru tidak ditemukan, cek di tabel siswa");
       
-      // Cek di tabel siswa
+      // Check in siswa table
       db.query(sqlSiswa, [id], (err, results) => {
         if (err) {
           console.error('Error querying siswa table:', err);
           return res.status(500).json({ error: err.message });
         }
-        console.log({sqlSiswa})
-
-        console.log("Hasil query siswa:", results); // Logging hasil query
 
         if (results.length > 0) {
           const siswa = results[0];
           const decryptedPassword = decryptPassword(siswa.password);
-
-          console.log("Password didekripsi:", decryptedPassword); // Logging password didekripsi
 
           if (decryptedPassword === password) {
             const token = jwt.sign({ id: siswa.nisn, role: 'siswa' }, "secret", { expiresIn: '1h' });
@@ -239,16 +234,17 @@ app.post('/upload', multerGoogleStorage, async (req, res) => {
 app.get('/guru', (req, res) => {
   const sql = `
   SELECT 
-  guru.*,
-  COALESCE(GROUP_CONCAT(mata_pelajaran.nama SEPARATOR ', '), '[]') AS matapelajaran
+    guru.*,
+    COALESCE(GROUP_CONCAT(matapelajaran.nama SEPARATOR ', '), '[]') AS matapelajaran
   FROM 
-      guru
+    guru
   LEFT JOIN 
-      mata_pelajaran ON guru.nip = mata_pelajaran.nip
-      GROUP BY 
-      guru.nip;
+    roster ON guru.nip = roster.nip
+  LEFT JOIN 
+    matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
+  GROUP BY 
+    guru.nip;
   `;
-  ;
   db.query(sql, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
@@ -257,6 +253,7 @@ app.get('/guru', (req, res) => {
   });
 });
 
+
 app.get('/guru/:nip', (req, res) => {
   const { nip } = req.params;
   const sql = `
@@ -264,7 +261,7 @@ app.get('/guru/:nip', (req, res) => {
         guru.*,
         JSON_ARRAYAGG(
             JSON_OBJECT(
-                'nama', mata_pelajaran.nama,
+                'nama', matapelajaran.nama,
                 'no_kelas', kelas.no_kelas,
                 'nama_kelas', kelas.nama_kelas
             )
@@ -272,9 +269,11 @@ app.get('/guru/:nip', (req, res) => {
     FROM 
         guru
     LEFT JOIN 
-        mata_pelajaran ON guru.nip = mata_pelajaran.nip
+        roster ON guru.nip = roster.nip
     LEFT JOIN 
-        kelas ON mata_pelajaran.id_kelas = kelas.id_kelas
+        matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
+    LEFT JOIN 
+        kelas ON roster.id_kelas = kelas.id_kelas
     WHERE 
         guru.nip = ?
     GROUP BY 
@@ -292,17 +291,22 @@ app.get('/guru/:nip', (req, res) => {
     // Ambil data guru
     const guru = results[0];
     
-    // Dekripsi password jika ada
+    // Dekripsi password jika ada (jika ada fungsi decryptPassword)
     if (guru.password) {
       guru.password = decryptPassword(guru.password);
     }
     
     // Parse matapelajaran jika ada
-    guru.matapelajaran = JSON.parse(guru.matapelajaran);
+    if (guru.matapelajaran) {
+      guru.matapelajaran = JSON.parse(guru.matapelajaran);
+    } else {
+      guru.matapelajaran = [];
+    }
     
     res.json(guru);
   });
 });
+
 
 
 
@@ -1166,8 +1170,8 @@ app.get('/kelasanyar/:id', (req, res) => {
       kelas.tahun_ajaran,
       siswa.nisn,
       siswa.nama AS nama_siswa,
-      mata_pelajaran.id_matapelajaran,
-      mata_pelajaran.nama AS nama_matapelajaran,
+      roster.id_roster,
+      matapelajaran.nama AS nama_matapelajaran,
       COALESCE(uts.nilai, 0) AS nilai_uts,
       COALESCE(uas.nilai, 0) AS nilai_uas,
       COALESCE(uha.nilai, 0) AS nilai_uha,
@@ -1179,15 +1183,17 @@ app.get('/kelasanyar/:id', (req, res) => {
     LEFT JOIN 
       siswa ON kelas.id_kelas = siswa.id_kelas
     LEFT JOIN 
-      mata_pelajaran ON kelas.id_kelas = mata_pelajaran.id_kelas
+      roster ON kelas.id_kelas = roster.id_kelas
     LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UTS' AND semester = 'genap' AND tahun_ajaran = ?) AS uts ON siswa.nisn = uts.nisn AND mata_pelajaran.id_matapelajaran = uts.id_matapelajaran
+      matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
     LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UAS' AND semester = 'genap' AND tahun_ajaran = ?) AS uas ON siswa.nisn = uas.nisn AND mata_pelajaran.id_matapelajaran = uas.id_matapelajaran
+      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UTS' AND semester = 'genap' AND tahun_ajaran = ?) AS uts ON siswa.nisn = uts.nisn AND matapelajaran.id_matapelajaran = uts.id_matapelajaran
     LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UHA' AND semester = 'genap' AND tahun_ajaran = ?) AS uha ON siswa.nisn = uha.nisn AND mata_pelajaran.id_matapelajaran = uha.id_matapelajaran
+      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UAS' AND semester = 'genap' AND tahun_ajaran = ?) AS uas ON siswa.nisn = uas.nisn AND matapelajaran.id_matapelajaran = uas.id_matapelajaran
     LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'TH' AND semester = 'genap' AND tahun_ajaran = ?) AS th ON siswa.nisn = th.nisn AND mata_pelajaran.id_matapelajaran = th.id_matapelajaran
+      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UHA' AND semester = 'genap' AND tahun_ajaran = ?) AS uha ON siswa.nisn = uha.nisn AND matapelajaran.id_matapelajaran = uha.id_matapelajaran
+    LEFT JOIN 
+      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'TH' AND semester = 'genap' AND tahun_ajaran = ?) AS th ON siswa.nisn = th.nisn AND matapelajaran.id_matapelajaran = th.id_matapelajaran
     WHERE
       kelas.id_kelas = ?
   `;
@@ -1211,17 +1217,17 @@ app.get('/kelasanyar/:id', (req, res) => {
       nip: results[0].nip,
       walikelas: results[0].walikelas,
       tahun_ajaran: results[0].tahun_ajaran,
-      mata_pelajaran: [],
+      matapelajaran: [],
       daftar_siswa: []
     };
 
-    // Mengisi mata_pelajaran dengan data mata pelajaran
+    // Mengisi matapelajaran dengan data mata pelajaran
     const mataPelajaranSet = new Set();
     results.forEach(row => {
       if (row.id_matapelajaran && row.nama_matapelajaran) {
         if (!mataPelajaranSet.has(row.id_matapelajaran)) {
           mataPelajaranSet.add(row.id_matapelajaran);
-          kelasInfo.mata_pelajaran.push({
+          kelasInfo.matapelajaran.push({
             id_matapelajaran: row.id_matapelajaran,
             nama_matapelajaran: row.nama_matapelajaran,
           });
@@ -1253,10 +1259,10 @@ app.get('/kelasanyar/:id', (req, res) => {
     });
 
     // Membagi nilai_total dengan jumlah mata pelajaran
-    const jumlahMataPelajaran = kelasInfo.mata_pelajaran.length;
-    if (jumlahMataPelajaran > 0) {
+    const jumlahMatapelajaran = kelasInfo.matapelajaran.length;
+    if (jumlahMatapelajaran > 0) {
       kelasInfo.daftar_siswa.forEach(siswa => {
-        siswa.nilai_total /= jumlahMataPelajaran;
+        siswa.nilai_total /= jumlahMatapelajaran;
       });
     }
 
@@ -1266,23 +1272,25 @@ app.get('/kelasanyar/:id', (req, res) => {
 
 
 
+
 app.get('/mata-pelajaran', (req, res) => {
   const sql = `
-  SELECT 
-      mata_pelajaran.id_matapelajaran,
-      mata_pelajaran.nama AS matapelajaran,
+    SELECT 
+      roster.id_roster,
+      matapelajaran.nama AS matapelajaran,
       guru.nama AS gurupengampu,
       CONCAT(kelas.no_kelas, ' ', kelas.nama_kelas) AS namakelas
-  FROM 
-      mata_pelajaran
-  JOIN 
-      guru ON mata_pelajaran.nip = guru.nip
-  JOIN 
-      kelas ON mata_pelajaran.id_kelas = kelas.id_kelas
-  ORDER BY 
+    FROM 
+      roster
+    JOIN 
+      matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
+    JOIN 
+      guru ON roster.nip = guru.nip
+    JOIN 
+      kelas ON roster.id_kelas = kelas.id_kelas
+    ORDER BY 
       matapelajaran, gurupengampu;
-`;
-
+  `;
 
   db.query(sql, (err, results) => {
     if (err) {
@@ -1292,25 +1300,28 @@ app.get('/mata-pelajaran', (req, res) => {
   });
 });
 
+
 app.get('/mata-pelajaran/:id', (req, res) => {
   const { id } = req.params;
   const sql = `
     SELECT 
-        mata_pelajaran.id_matapelajaran,
-        mata_pelajaran.nama AS matapelajaran,
+        roster.id_roster,
+        matapelajaran.nama AS matapelajaran,
         guru.nama AS guru_nama,
         guru.nip AS guru_nip,
         kelas.id_kelas,
         kelas.no_kelas,
         kelas.nama_kelas
     FROM 
-        mata_pelajaran
+        roster
     JOIN 
-        guru ON mata_pelajaran.nip = guru.nip
+        matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
     JOIN 
-        kelas ON mata_pelajaran.id_kelas = kelas.id_kelas
+        guru ON roster.nip = guru.nip
+    JOIN 
+        kelas ON roster.id_kelas = kelas.id_kelas
     WHERE 
-        mata_pelajaran.id_matapelajaran = ?
+        roster.id_roster = ?
     ORDER BY 
         matapelajaran, guru_nama;
   `;
@@ -1320,13 +1331,13 @@ app.get('/mata-pelajaran/:id', (req, res) => {
       return res.status(500).json({ error: err.message });
     }
     if (results.length === 0) {
-      return res.status(404).json({ message: 'Mata pelajaran dengan ID tersebut tidak ditemukan' });
+      return res.status(404).json({ message: 'Roster dengan ID tersebut tidak ditemukan' });
     }
 
     // Modifikasi hasil query
     const result = results[0];
     const modifiedResult = {
-      id_matapelajaran: result.id_matapelajaran,
+      id_roster: result.id_roster,
       matapelajaran: result.matapelajaran,
       guru_pengampu: { label: result.guru_nama, value: result.guru_nip },
       namakelas: result.no_kelas + ' ' + result.nama_kelas,
@@ -1339,6 +1350,7 @@ app.get('/mata-pelajaran/:id', (req, res) => {
     res.json(modifiedResult);
   });
 });
+
 
 
 
@@ -1549,34 +1561,37 @@ app.put('/absensi', (req, res) => {
 
 app.get('/data', (req, res) => {
   const sql = `
-  SELECT
-      guru.nip,
-      guru.nama AS nama_guru,
-      kelas.id_kelas,
-      kelas.nama_kelas,
-      JSON_ARRAYAGG(
-          JSON_OBJECT(
-              'id_matapelajaran', mata_pelajaran.id_matapelajaran,
-              'nama', mata_pelajaran.nama
-          )
-      ) AS mata_pelajaran
-  FROM
-      guru
-  JOIN
-      kelas ON guru.nip = kelas.nip
-  JOIN
-      mata_pelajaran ON kelas.id_kelas = mata_pelajaran.id_kelas
-  GROUP BY
-      guru.nip, guru.nama, kelas.id_kelas, kelas.nama_kelas;
-`;
+    SELECT
+        guru.nip,
+        guru.nama AS nama_guru,
+        kelas.id_kelas,
+        kelas.nama_kelas,
+        JSON_ARRAYAGG(
+            JSON_OBJECT(
+                'id_roster', roster.id_roster,
+                'nama', mata_pelajaran.nama
+            )
+        ) AS mata_pelajaran
+    FROM
+        guru
+    JOIN
+        kelas ON guru.nip = kelas.nip
+    LEFT JOIN
+        roster ON kelas.id_kelas = roster.id_kelas
+    LEFT JOIN
+        mata_pelajaran ON roster.id_roster = mata_pelajaran.id_matapelajaran
+    GROUP BY
+        guru.nip, guru.nama, kelas.id_kelas, kelas.nama_kelas;
+  `;
 
-db.query(sql, (err, results) => {
-  if (err) {
-    return res.status(500).json({ error: err.message });
-  }
-  res.json(results);
+  db.query(sql, (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(results);
+  });
 });
-});
+
 
 app.get('/filter-nilai', (req, res) => {
   const sql = `
@@ -1584,14 +1599,16 @@ app.get('/filter-nilai', (req, res) => {
         guru.nip,
         guru.nama AS nama_guru,
         kelas.id_kelas AS kelas,
-        mata_pelajaran.id_matapelajaran,
-        mata_pelajaran.nama AS nama_matapelajaran
+        roster.id_roster AS id_roster,
+        matapelajaran.nama AS nama_matapelajaran
     FROM 
         guru
     JOIN 
-        mata_pelajaran ON guru.nip = mata_pelajaran.nip
+        roster ON guru.nip = roster.nip
     JOIN 
-        kelas ON mata_pelajaran.id_kelas = kelas.id_kelas
+        matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
+    JOIN 
+        kelas ON roster.id_kelas = kelas.id_kelas
     ORDER BY 
         guru.nip, kelas.id_kelas;
   `;
@@ -1603,7 +1620,7 @@ app.get('/filter-nilai', (req, res) => {
 
     // Process the results to group by 'nip' and 'kelas'
     const groupedResults = results.reduce((acc, curr) => {
-      const { nip, nama_guru, kelas, id_matapelajaran, nama_matapelajaran } = curr;
+      const { nip, nama_guru, kelas, id_roster, nama_matapelajaran } = curr;
 
       // Find existing entry for the current guru
       let guruEntry = acc.find(entry => entry.nip === nip);
@@ -1632,7 +1649,7 @@ app.get('/filter-nilai', (req, res) => {
 
       // Add the current subject to the class's subject list
       kelasEntry.matapelajaran.push({
-        id: id_matapelajaran,
+        id: id_roster,
         nama: nama_matapelajaran
       });
 
@@ -1642,6 +1659,8 @@ app.get('/filter-nilai', (req, res) => {
     res.json(groupedResults);
   });
 });
+
+
 
 app.get('/filter-nilai/:nip', (req, res) => {
   const { nip } = req.params;
@@ -1653,14 +1672,16 @@ app.get('/filter-nilai/:nip', (req, res) => {
         kelas.id_kelas AS kelas,
         kelas.nama_kelas,
         kelas.no_kelas,
-        mata_pelajaran.id_matapelajaran,
-        mata_pelajaran.nama AS nama_matapelajaran
+        roster.id_roster AS id_matapelajaran,
+        matapelajaran.nama AS nama_matapelajaran
     FROM 
         guru
     JOIN 
-        mata_pelajaran ON guru.nip = mata_pelajaran.nip
+        roster ON guru.nip = roster.nip
     JOIN 
-        kelas ON mata_pelajaran.id_kelas = kelas.id_kelas
+        matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
+    JOIN 
+        kelas ON roster.id_kelas = kelas.id_kelas
     WHERE 
         guru.nip = ?
     ORDER BY 
@@ -1670,6 +1691,10 @@ app.get('/filter-nilai/:nip', (req, res) => {
   db.query(sql, [nip], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Data tidak ditemukan untuk NIP tersebut' });
     }
 
     // Process the results to group by 'nip' and 'kelas'
@@ -1717,18 +1742,22 @@ app.get('/filter-nilai/:nip', (req, res) => {
 });
 
 
+
+
 app.get('/nilai', (req, res) => {
   const sql = `
     SELECT 
       nilai.*, 
       siswa.nama AS nama_siswa, 
-      mata_pelajaran.nama AS nama_matapelajaran 
+      matapelajaran.nama AS nama_matapelajaran 
     FROM 
       nilai
     JOIN 
       siswa ON nilai.nisn = siswa.nisn
     JOIN 
-      mata_pelajaran ON nilai.id_matapelajaran = mata_pelajaran.id_matapelajaran
+      roster ON nilai.id_roster = roster.id_roster
+    JOIN 
+      matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
   `;
 
   db.query(sql, (err, results) => {
@@ -1738,6 +1767,7 @@ app.get('/nilai', (req, res) => {
     res.json(results);
   });
 });
+
 
 
 app.get('/nilai/:nisn', (req, res) => {
@@ -1750,17 +1780,19 @@ app.get('/nilai/:nisn', (req, res) => {
     return res.status(400).json({ error: "Invalid kelas value" });
   }
 
-  let sql = `
+  const sql = `
     SELECT 
       nilai.*, 
       siswa.nama AS nama_siswa, 
-      mata_pelajaran.nama AS nama_matapelajaran 
+      matapelajaran.nama AS nama_matapelajaran 
     FROM 
       nilai
     JOIN 
       siswa ON nilai.nisn = siswa.nisn
     JOIN 
-      mata_pelajaran ON nilai.id_matapelajaran = mata_pelajaran.id_matapelajaran
+      roster ON nilai.id_roster = roster.id_roster
+    JOIN 
+      matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
     WHERE 
       nilai.nisn = ? AND nilai.semester = ? AND nilai.no_kelas = ?
   `;
@@ -1772,6 +1804,7 @@ app.get('/nilai/:nisn', (req, res) => {
     res.json(results);
   });
 });
+
 
 
 app.get('/nilai/mapel/:id_matapelajaran', (req, res) => {
@@ -1821,8 +1854,8 @@ app.get('/nilai/matapelajaran/:id_matapelajaran', (req, res) => {
       siswa.nama AS nama_siswa,
       kelas.no_kelas,
       kelas.nama_kelas,
-      mata_pelajaran.id_matapelajaran,
-      mata_pelajaran.nama AS nama_matapelajaran,
+      roster.id_roster AS id_matapelajaran,
+      matapelajaran.nama AS nama_matapelajaran,
       COALESCE(uts.nilai, 0) AS uts_nilai,
       COALESCE(uas.nilai, 0) AS uas_nilai,
       COALESCE(uha.nilai, 0) AS uha_nilai,
@@ -1832,17 +1865,19 @@ app.get('/nilai/matapelajaran/:id_matapelajaran', (req, res) => {
     JOIN 
       kelas ON siswa.id_kelas = kelas.id_kelas
     JOIN 
-      mata_pelajaran ON kelas.id_kelas = mata_pelajaran.id_kelas
+      roster ON kelas.id_kelas = roster.id_kelas
+    JOIN 
+      matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
     LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UTS' AND semester = ?) AS uts ON siswa.nisn = uts.nisn AND mata_pelajaran.id_matapelajaran = uts.id_matapelajaran
+      (SELECT nisn, id_roster, nilai FROM nilai WHERE tipe = 'UTS' AND semester = ?) AS uts ON siswa.nisn = uts.nisn AND roster.id_roster = uts.id_roster
     LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UAS' AND semester = ?) AS uas ON siswa.nisn = uas.nisn AND mata_pelajaran.id_matapelajaran = uas.id_matapelajaran
+      (SELECT nisn, id_roster, nilai FROM nilai WHERE tipe = 'UAS' AND semester = ?) AS uas ON siswa.nisn = uas.nisn AND roster.id_roster = uas.id_roster
     LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UHA' AND semester = ?) AS uha ON siswa.nisn = uha.nisn AND mata_pelajaran.id_matapelajaran = uha.id_matapelajaran
+      (SELECT nisn, id_roster, nilai FROM nilai WHERE tipe = 'UHA' AND semester = ?) AS uha ON siswa.nisn = uha.nisn AND roster.id_roster = uha.id_roster
     LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'TH' AND semester = ?) AS th ON siswa.nisn = th.nisn AND mata_pelajaran.id_matapelajaran = th.id_matapelajaran
+      (SELECT nisn, id_roster, nilai FROM nilai WHERE tipe = 'TH' AND semester = ?) AS th ON siswa.nisn = th.nisn AND roster.id_roster = th.id_roster
     WHERE 
-      mata_pelajaran.id_matapelajaran = ?;
+      roster.id_roster = ?;
   `;
 
   db.query(sql, [semester, semester, semester, semester, id_matapelajaran], (err, results) => {
@@ -1870,8 +1905,9 @@ app.get('/nilai/matapelajaran/:id_matapelajaran', (req, res) => {
 });
 
 
-app.get('/nilai/matapelajaran/:id_matapelajaran/:nisn/:semester', (req, res) => {
-  const { id_matapelajaran, nisn, semester } = req.params;
+
+app.get('/nilai/matapelajaran/:id_roster/:nisn/:semester', (req, res) => {
+  const { id_roster, nisn, semester } = req.params;
 
   const sql = `
     SELECT 
@@ -1880,8 +1916,8 @@ app.get('/nilai/matapelajaran/:id_matapelajaran/:nisn/:semester', (req, res) => 
       kelas.no_kelas,
       kelas.nama_kelas,
       kelas.tahun_ajaran,
-      mata_pelajaran.id_matapelajaran,
-      mata_pelajaran.nama AS nama_matapelajaran,
+      roster.id_roster AS id_matapelajaran,
+      matapelajaran.nama AS nama_matapelajaran,
       COALESCE(uts.id_nilai, NULL) AS uts_id_nilai,
       COALESCE(uts.nilai, 0) AS uts_nilai,
       COALESCE(uts.capaian_kompetensi, NULL) AS uts_capaian_kompetensi,
@@ -1899,20 +1935,22 @@ app.get('/nilai/matapelajaran/:id_matapelajaran/:nisn/:semester', (req, res) => 
     JOIN 
       kelas ON siswa.id_kelas = kelas.id_kelas
     JOIN 
-      mata_pelajaran ON kelas.id_kelas = mata_pelajaran.id_kelas
+      roster ON kelas.id_kelas = roster.id_kelas
+    JOIN 
+      matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
     LEFT JOIN 
-      (SELECT id_nilai, nisn, id_matapelajaran, nilai, capaian_kompetensi FROM nilai WHERE tipe = 'UTS' AND semester = ?) AS uts ON siswa.nisn = uts.nisn AND mata_pelajaran.id_matapelajaran = uts.id_matapelajaran
+      (SELECT id_nilai, nisn, id_roster, nilai, capaian_kompetensi FROM nilai WHERE tipe = 'UTS' AND semester = ?) AS uts ON siswa.nisn = uts.nisn AND roster.id_roster = uts.id_roster
     LEFT JOIN 
-      (SELECT id_nilai, nisn, id_matapelajaran, nilai, capaian_kompetensi FROM nilai WHERE tipe = 'UAS' AND semester = ?) AS uas ON siswa.nisn = uas.nisn AND mata_pelajaran.id_matapelajaran = uas.id_matapelajaran
+      (SELECT id_nilai, nisn, id_roster, nilai, capaian_kompetensi FROM nilai WHERE tipe = 'UAS' AND semester = ?) AS uas ON siswa.nisn = uas.nisn AND roster.id_roster = uas.id_roster
     LEFT JOIN 
-      (SELECT id_nilai, nisn, id_matapelajaran, nilai, capaian_kompetensi FROM nilai WHERE tipe = 'UHA' AND semester = ?) AS uha ON siswa.nisn = uha.nisn AND mata_pelajaran.id_matapelajaran = uha.id_matapelajaran
+      (SELECT id_nilai, nisn, id_roster, nilai, capaian_kompetensi FROM nilai WHERE tipe = 'UHA' AND semester = ?) AS uha ON siswa.nisn = uha.nisn AND roster.id_roster = uha.id_roster
     LEFT JOIN 
-      (SELECT id_nilai, nisn, id_matapelajaran, nilai, capaian_kompetensi FROM nilai WHERE tipe = 'TH' AND semester = ?) AS th ON siswa.nisn = th.nisn AND mata_pelajaran.id_matapelajaran = th.id_matapelajaran
+      (SELECT id_nilai, nisn, id_roster, nilai, capaian_kompetensi FROM nilai WHERE tipe = 'TH' AND semester = ?) AS th ON siswa.nisn = th.nisn AND roster.id_roster = th.id_roster
     WHERE 
-      mata_pelajaran.id_matapelajaran = ? AND siswa.nisn = ?;
+      roster.id_roster = ? AND siswa.nisn = ?;
   `;
 
-  db.query(sql, [semester, semester, semester, semester, id_matapelajaran, nisn], (err, results) => {
+  db.query(sql, [semester, semester, semester, semester, id_roster, nisn], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -1938,67 +1976,6 @@ app.get('/nilai/matapelajaran/:id_matapelajaran/:nisn/:semester', (req, res) => 
 });
 
 
-
-app.get('/nilai/matapelajaran/semester/genap', (req, res) => {
-  const { tahun_ajaran, id_kelas } = req.query;
-
-  const sql = `
-    SELECT 
-      siswa.nisn,
-      siswa.nama AS nama_siswa,
-      kelas.no_kelas,
-      kelas.nama_kelas,
-      mata_pelajaran.id_matapelajaran,
-      mata_pelajaran.nama AS nama_matapelajaran,
-      COALESCE(uts.nilai, 0) AS uts_nilai,
-      COALESCE(uas.nilai, 0) AS uas_nilai,
-      COALESCE(uha.nilai, 0) AS uha_nilai,
-      COALESCE(th.nilai, 0) AS th_nilai
-    FROM 
-      siswa
-    JOIN 
-      kelas ON siswa.id_kelas = kelas.id_kelas
-    JOIN 
-      mata_pelajaran ON kelas.id_kelas = mata_pelajaran.id_kelas
-    LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UTS' AND semester = 'genap' AND tahun_ajaran = ?) AS uts ON siswa.nisn = uts.nisn AND mata_pelajaran.id_matapelajaran = uts.id_matapelajaran
-    LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UAS' AND semester = 'genap' AND tahun_ajaran = ?) AS uas ON siswa.nisn = uas.nisn AND mata_pelajaran.id_matapelajaran = uas.id_matapelajaran
-    LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UHA' AND semester = 'genap' AND tahun_ajaran = ?) AS uha ON siswa.nisn = uha.nisn AND mata_pelajaran.id_matapelajaran = uha.id_matapelajaran
-    LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'TH' AND semester = 'genap' AND tahun_ajaran = ?) AS th ON siswa.nisn = th.nisn AND mata_pelajaran.id_matapelajaran = th.id_matapelajaran
-    WHERE 
-      kelas.id_kelas = ? AND mata_pelajaran.id_matapelajaran IS NOT NULL;
-  `;
-
-  db.query(sql, [tahun_ajaran, tahun_ajaran, tahun_ajaran, tahun_ajaran, id_kelas], (err, results) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-
-    const formattedResults = results.map(result => ({
-      nisn: result.nisn,
-      nama_siswa: result.nama_siswa,
-      no_kelas: result.no_kelas,
-      nama_kelas: result.nama_kelas,
-      id_matapelajaran: result.id_matapelajaran,
-      nama_matapelajaran: result.nama_matapelajaran,
-      nilai_seluruh: [
-        { tipe: 'UTS', nilai: result.uts_nilai },
-        { tipe: 'UAS', nilai: result.uas_nilai },
-        { tipe: 'UHA', nilai: result.uha_nilai },
-        { tipe: 'TH', nilai: result.th_nilai }
-      ]
-    }));
-
-    res.json(formattedResults);
-  });
-});
-
-
-
-
 app.post('/nilai', (req, res) => {
   const { id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, no_kelas, capaian_kompetensi } = req.body;
 
@@ -2008,7 +1985,7 @@ app.post('/nilai', (req, res) => {
   }
 
   const sql = `
-    INSERT INTO nilai (id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, no_kelas, capaian_kompetensi)
+    INSERT INTO nilai (id_nilai, nisn, id_roster, tipe, nilai, semester, tahun_ajaran, no_kelas, capaian_kompetensi)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
@@ -2019,6 +1996,7 @@ app.post('/nilai', (req, res) => {
     res.status(201).json({ message: 'Nilai berhasil ditambahkan', id: result.insertId });
   });
 });
+
 
 app.put('/nilai/:id_nilai', (req, res) => {
   const { id_nilai } = req.params;
@@ -2031,7 +2009,7 @@ app.put('/nilai/:id_nilai', (req, res) => {
 
   const sql = `
     UPDATE nilai 
-    SET nisn = ?, id_matapelajaran = ?, tipe = ?, nilai = ?, semester = ?, tahun_ajaran = ?, no_kelas = ?, capaian_kompetensi = ?
+    SET nisn = ?, id_roster = ?, tipe = ?, nilai = ?, semester = ?, tahun_ajaran = ?, no_kelas = ?, capaian_kompetensi = ?
     WHERE id_nilai = ?
   `;
 
@@ -2045,6 +2023,7 @@ app.put('/nilai/:id_nilai', (req, res) => {
     res.json({ message: 'Nilai berhasil diperbarui' });
   });
 });
+
 
 app.put('/nilai/:id_nilai/capaian_kompetensi', (req, res) => {
   const { id_nilai } = req.params;
@@ -2711,13 +2690,14 @@ app.get('/raport/:nisn', (req, res) => {
         COALESCE(uha.nilai, 0) AS UHA,
         COALESCE(th.nilai, 0) AS TH
     FROM siswa s
-    JOIN mata_pelajaran mp ON s.id_kelas = mp.id_kelas
-    LEFT JOIN nilai n ON s.nisn = n.nisn
+    JOIN roster r ON s.id_kelas = r.id_kelas
+    JOIN matapelajaran mp ON r.id_matapelajaran = mp.id_matapelajaran
+    LEFT JOIN nilai n ON s.nisn = n.nisn AND r.id_roster = n.id_roster
     LEFT JOIN absensi a ON s.nisn = a.nisn
-    LEFT JOIN nilai uts ON s.nisn = uts.nisn AND mp.id_matapelajaran = uts.id_matapelajaran AND uts.tipe = 'UTS' AND uts.semester = ?
-    LEFT JOIN nilai uas ON s.nisn = uas.nisn AND mp.id_matapelajaran = uas.id_matapelajaran AND uas.tipe = 'UAS' AND uas.semester = ?
-    LEFT JOIN nilai uha ON s.nisn = uha.nisn AND mp.id_matapelajaran = uha.id_matapelajaran AND uha.tipe = 'UHA' AND uha.semester = ?
-    LEFT JOIN nilai th ON s.nisn = th.nisn AND mp.id_matapelajaran = th.id_matapelajaran AND th.tipe = 'TH' AND th.semester = ?
+    LEFT JOIN nilai uts ON s.nisn = uts.nisn AND r.id_roster = uts.id_roster AND uts.tipe = 'UTS' AND uts.semester = ?
+    LEFT JOIN nilai uas ON s.nisn = uas.nisn AND r.id_roster = uas.id_roster AND uas.tipe = 'UAS' AND uas.semester = ?
+    LEFT JOIN nilai uha ON s.nisn = uha.nisn AND r.id_roster = uha.id_roster AND uha.tipe = 'UHA' AND uha.semester = ?
+    LEFT JOIN nilai th ON s.nisn = th.nisn AND r.id_roster = th.id_roster AND th.tipe = 'TH' AND th.semester = ?
     WHERE s.nisn = ? AND a.no_kelas = ? AND a.semester = ?
     GROUP BY mp.nama, n.capaian_kompetensi, uts.nilai, uas.nilai, uha.nilai, th.nilai
   `;
@@ -2792,6 +2772,7 @@ app.get('/raport/:nisn', (req, res) => {
     });
   });
 });
+
 
 
 
@@ -2891,6 +2872,659 @@ app.post('/alumni', (req, res) => {
     res.status(201).json({ message: 'Data alumni berhasil ditambahkan', affectedRows: result.affectedRows, insertId: result.insertId });
   });
 });
+
+app.get('/spiritual', (req, res) => {
+  const { nisn, semester, no_kelas } = req.query;
+
+  // Validasi input
+  if (!nisn || !semester || !no_kelas) {
+      return res.status(400).json({ error: 'NISN, semester, dan no_kelas wajib diisi' });
+  }
+
+  const sql = `
+      SELECT *
+      FROM sikap_spiritual
+      WHERE nisn = ? AND semester = ? AND no_kelas = ?
+  `;
+
+  db.query(sql, [nisn, semester, no_kelas], (err, results) => {
+      if (err) {
+          console.error('Error querying sikap_spiritual table:', err);
+          return res.status(500).json({ error: err.message });
+      }
+
+      // Jika tidak ada data ditemukan, kirim data dengan nilai null atau string kosong
+      if (results.length === 0) {
+          return res.status(200).json({
+              id_spiritual: null,
+              sholat_fardhu: '',
+              sholat_dhuha: '',
+              sholat_tahajud: '',
+              sunnah_rawatib: '',
+              tilawah_quran: '',
+              shaum_sunnah: '',
+              shodaqoh: '',
+              nilai_konklusi: '',
+              no_kelas: no_kelas,
+              semester: semester,
+              nisn: nisn
+          });
+      }
+
+      // Kirim data jika ditemukan
+      return res.status(200).json({ data: results[0] });
+  });
+});
+
+app.get('/spiritual/:nip', (req, res) => {
+  const nip = req.params.nip;
+  const { semester, no_kelas } = req.query;
+
+  // Validasi input
+  if (!semester || !no_kelas) {
+    return res.status(400).json({ error: 'Semester dan no_kelas wajib diisi' });
+  }
+
+  // Query gabungan untuk mendapatkan data siswa dan sikap_spiritual
+  const query = `
+    SELECT 
+      siswa.nisn, 
+      siswa.nama, 
+      siswa.NIPD, 
+      siswa.email, 
+      siswa.jenis_kelamin, 
+      siswa.tempat_lahir, 
+      siswa.tanggal_lahir, 
+      siswa.alamat, 
+      siswa.no_telepon,
+      sikap_spiritual.id_spiritual,
+      sikap_spiritual.sholat_fardhu,
+      sikap_spiritual.sholat_dhuha,
+      sikap_spiritual.sholat_tahajud,
+      sikap_spiritual.sunnah_rawatib,
+      sikap_spiritual.tilawah_quran,
+      sikap_spiritual.shaum_sunnah,
+      sikap_spiritual.shodaqoh,
+      sikap_spiritual.nilai_konklusi,
+      sikap_spiritual.no_kelas AS sikap_no_kelas,
+      sikap_spiritual.semester AS sikap_semester,
+      sikap_spiritual.deskripsi
+    FROM siswa
+    JOIN kelas ON siswa.id_kelas = kelas.id_kelas
+    LEFT JOIN sikap_spiritual ON siswa.nisn = sikap_spiritual.nisn 
+      AND sikap_spiritual.semester = ? 
+      AND sikap_spiritual.no_kelas = ?
+    WHERE kelas.nip = ?
+  `;
+
+  db.query(query, [semester, no_kelas, nip], (err, results) => {
+    if (err) {
+      console.error('Error executing query:', err);
+      return res.status(500).send('Internal server error');
+    }
+
+    // Memeriksa apakah ada data siswa dan sikap_spiritual
+    const formattedResults = results.map(row => ({
+      nisn: row.nisn,
+      nama: row.nama,
+      NIPD: row.NIPD,
+      email: row.email,
+      jenis_kelamin: row.jenis_kelamin,
+      tempat_lahir: row.tempat_lahir,
+      tanggal_lahir: row.tanggal_lahir,
+      alamat: row.alamat,
+      no_telepon: row.no_telepon,
+      id_spiritual: row.id_spiritual || null,
+      sholat_fardhu: row.sholat_fardhu || '',
+      sholat_dhuha: row.sholat_dhuha || '',
+      sholat_tahajud: row.sholat_tahajud || '',
+      sunnah_rawatib: row.sunnah_rawatib || '',
+      tilawah_quran: row.tilawah_quran || '',
+      shaum_sunnah: row.shaum_sunnah || '',
+      shodaqoh: row.shodaqoh || '',
+      nilai_konklusi: row.nilai_konklusi || '',
+      no_kelas: row.sikap_no_kelas || no_kelas,
+      semester: row.sikap_semester || semester,
+      deskripsi: row.deskripsi || '' // Menambahkan kolom deskripsi dengan nilai default
+    }));
+
+    // Kirim data siswa dan sikap_spiritual dengan nilai default jika data sikap_spiritual tidak ada
+    return res.status(200).json(formattedResults);
+  });
+});
+
+app.post('/spiritual', (req, res) => {
+  const {
+    id_spiritual,
+    nisn,
+    semester,
+    no_kelas,
+    sholat_fardhu,
+    sholat_dhuha,
+    sholat_tahajud,
+    sunnah_rawatib,
+    tilawah_quran,
+    shaum_sunnah,
+    shodaqoh,
+    nilai_konklusi,
+    deskripsi
+  } = req.body;
+
+  // Validasi input
+  if (!id_spiritual || !nisn || !semester || !no_kelas) {
+    return res.status(400).json({ error: 'ID Spiritual, NISN, semester, dan no_kelas wajib diisi' });
+  }
+
+  const query = `
+    INSERT INTO sikap_spiritual (
+      id_spiritual,
+      nisn,
+      semester,
+      no_kelas,
+      sholat_fardhu,
+      sholat_dhuha,
+      sholat_tahajud,
+      sunnah_rawatib,
+      tilawah_quran,
+      shaum_sunnah,
+      shodaqoh,
+      nilai_konklusi,
+      deskripsi
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  db.query(query, [
+    id_spiritual,
+    nisn,
+    semester,
+    no_kelas,
+    sholat_fardhu,
+    sholat_dhuha,
+    sholat_tahajud,
+    sunnah_rawatib,
+    tilawah_quran,
+    shaum_sunnah,
+    shodaqoh,
+    nilai_konklusi,
+    deskripsi
+  ], (err, results) => {
+    if (err) {
+      console.error('Error inserting sikap_spiritual:', err);
+      return res.status(500).json({ error: err.message });
+    }
+
+    return res.status(201).json({ message: 'Data sikap_spiritual berhasil ditambahkan' });
+  });
+});
+
+app.put('/spiritual/:id_spiritual', (req, res) => {
+  const id_spiritual = req.params.id_spiritual;
+  const {
+    sholat_fardhu,
+    sholat_dhuha,
+    sholat_tahajud,
+    sunnah_rawatib,
+    tilawah_quran,
+    shaum_sunnah,
+    shodaqoh,
+    nilai_konklusi,
+    no_kelas,
+    semester,
+    deskripsi
+  } = req.body;
+
+  // Validasi input
+  if (!id_spiritual) {
+    return res.status(400).json({ error: 'ID Spiritual wajib diisi' });
+  }
+
+  const query = `
+    UPDATE sikap_spiritual
+    SET
+      sholat_fardhu = ?,
+      sholat_dhuha = ?,
+      sholat_tahajud = ?,
+      sunnah_rawatib = ?,
+      tilawah_quran = ?,
+      shaum_sunnah = ?,
+      shodaqoh = ?,
+      nilai_konklusi = ?,
+      no_kelas = ?,
+      semester = ?,
+      deskripsi = ?
+    WHERE id_spiritual = ?
+  `;
+
+  db.query(query, [
+    sholat_fardhu,
+    sholat_dhuha,
+    sholat_tahajud,
+    sunnah_rawatib,
+    tilawah_quran,
+    shaum_sunnah,
+    shodaqoh,
+    nilai_konklusi,
+    no_kelas,
+    semester,
+    deskripsi,
+    id_spiritual
+  ], (err, results) => {
+    if (err) {
+      console.error('Error updating sikap_spiritual:', err);
+      return res.status(500).json({ error: err.message });
+    }
+
+    return res.status(200).json({ message: 'Data sikap_spiritual berhasil diperbarui' });
+  });
+});
+
+app.get('/sosial', (req, res) => {
+  const { nisn, semester, no_kelas } = req.query;
+
+  // Validasi input
+  if (!nisn || !semester || !no_kelas) {
+      return res.status(400).json({ error: 'NISN, semester, dan no_kelas wajib diisi' });
+  }
+
+  const sql = `
+      SELECT *
+      FROM sikap_sosial
+      WHERE nisn = ? AND semester = ? AND no_kelas = ?
+  `;
+
+  db.query(sql, [nisn, semester, no_kelas], (err, results) => {
+      if (err) {
+          console.error('Error querying sikap_sosial table:', err);
+          return res.status(500).json({ error: err.message });
+      }
+
+      // Jika tidak ada data ditemukan, kirim data dengan nilai null atau string kosong
+      if (results.length === 0) {
+          return res.status(200).json({
+              id_sosial: null,
+              sabar: '',
+              jujur: '',
+              amanah: '',
+              tawakkal: '',
+              empati: '',
+              disiplin: '',
+              kerjasama: '',
+              nilai_konklusi: '',
+              no_kelas: no_kelas,
+              semester: semester,
+              nisn: nisn,
+              deskripsi: ''
+          });
+      }
+
+      // Kirim data jika ditemukan
+      return res.status(200).json({ data: results[0] });
+  });
+});
+
+app.get('/sosial/:nip', (req, res) => {
+  const nip = req.params.nip;
+  const { semester, no_kelas } = req.query;
+
+  // Validasi input
+  if (!semester || !no_kelas) {
+    return res.status(400).json({ error: 'Semester dan no_kelas wajib diisi' });
+  }
+
+  // Query gabungan untuk mendapatkan data siswa dan sikap_sosial
+  const query = `
+    SELECT 
+      siswa.nisn, 
+      siswa.nama, 
+      siswa.NIPD, 
+      siswa.email, 
+      siswa.jenis_kelamin, 
+      siswa.tempat_lahir, 
+      siswa.tanggal_lahir, 
+      siswa.alamat, 
+      siswa.no_telepon,
+      sikap_sosial.id_sosial,
+      sikap_sosial.sabar,
+      sikap_sosial.jujur,
+      sikap_sosial.amanah,
+      sikap_sosial.tawakkal,
+      sikap_sosial.empati,
+      sikap_sosial.disiplin,
+      sikap_sosial.kerjasama,
+      sikap_sosial.nilai_konklusi,
+      sikap_sosial.no_kelas AS sikap_no_kelas,
+      sikap_sosial.semester AS sikap_semester,
+      sikap_sosial.deskripsi
+    FROM siswa
+    JOIN kelas ON siswa.id_kelas = kelas.id_kelas
+    LEFT JOIN sikap_sosial ON siswa.nisn = sikap_sosial.nisn 
+      AND sikap_sosial.semester = ? 
+      AND sikap_sosial.no_kelas = ?
+    WHERE kelas.nip = ?
+  `;
+
+  db.query(query, [semester, no_kelas, nip], (err, results) => {
+    if (err) {
+      console.error('Error executing query:', err);
+      return res.status(500).send('Internal server error');
+    }
+
+    // Memeriksa apakah ada data siswa dan sikap_sosial
+    const formattedResults = results.map(row => ({
+      nisn: row.nisn,
+      nama: row.nama,
+      NIPD: row.NIPD,
+      email: row.email,
+      jenis_kelamin: row.jenis_kelamin,
+      tempat_lahir: row.tempat_lahir,
+      tanggal_lahir: row.tanggal_lahir,
+      alamat: row.alamat,
+      no_telepon: row.no_telepon,
+      id_sosial: row.id_sosial || null,
+      sabar: row.sabar || '',
+      jujur: row.jujur || '',
+      amanah: row.amanah || '',
+      tawakkal: row.tawakkal || '',
+      empati: row.empati || '',
+      disiplin: row.disiplin || '',
+      kerjasama: row.kerjasama || '',
+      nilai_konklusi: row.nilai_konklusi || '',
+      no_kelas: row.sikap_no_kelas || no_kelas,
+      semester: row.sikap_semester || semester,
+      deskripsi: row.deskripsi || '' // Menambahkan kolom deskripsi dengan nilai default
+    }));
+
+    // Kirim data siswa dan sikap_sosial dengan nilai default jika data sikap_sosial tidak ada
+    return res.status(200).json(formattedResults);
+  });
+});
+
+app.post('/sosial', (req, res) => {
+  const {
+    id_sosial,
+    nisn,
+    semester,
+    no_kelas,
+    sabar,
+    jujur,
+    amanah,
+    tawakkal,
+    empati,
+    disiplin,
+    kerjasama,
+    nilai_konklusi,
+    deskripsi
+  } = req.body;
+
+  // Validasi input
+  if (!id_sosial || !nisn || !semester || !no_kelas) {
+    return res.status(400).json({ error: 'ID Sosial, NISN, semester, dan no_kelas wajib diisi' });
+  }
+
+  const query = `
+    INSERT INTO sikap_sosial (
+      id_sosial,
+      nisn,
+      semester,
+      no_kelas,
+      sabar,
+      jujur,
+      amanah,
+      tawakkal,
+      empati,
+      disiplin,
+      kerjasama,
+      nilai_konklusi,
+      deskripsi
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  db.query(query, [
+    id_sosial,
+    nisn,
+    semester,
+    no_kelas,
+    sabar,
+    jujur,
+    amanah,
+    tawakkal,
+    empati,
+    disiplin,
+    kerjasama,
+    nilai_konklusi,
+    deskripsi
+  ], (err, results) => {
+    if (err) {
+      console.error('Error inserting sikap_sosial:', err);
+      return res.status(500).json({ error: err.message });
+    }
+
+    return res.status(201).json({ message: 'Data sikap_sosial berhasil ditambahkan' });
+  });
+});
+
+app.put('/sosial/:id_sosial', (req, res) => {
+  const id_sosial = req.params.id_sosial;
+  const {
+    sabar,
+    jujur,
+    amanah,
+    tawakkal,
+    empati,
+    disiplin,
+    kerjasama,
+    nilai_konklusi,
+    no_kelas,
+    semester,
+    deskripsi
+  } = req.body;
+
+  // Validasi input
+  if (!id_sosial) {
+    return res.status(400).json({ error: 'ID Sosial wajib diisi' });
+  }
+
+  const query = `
+    UPDATE sikap_sosial
+    SET
+      sabar = ?,
+      jujur = ?,
+      amanah = ?,
+      tawakkal = ?,
+      empati = ?,
+      disiplin = ?,
+      kerjasama = ?,
+      nilai_konklusi = ?,
+      no_kelas = ?,
+      semester = ?,
+      deskripsi = ?
+    WHERE id_sosial = ?
+  `;
+
+  db.query(query, [
+    sabar,
+    jujur,
+    amanah,
+    tawakkal,
+    empati,
+    disiplin,
+    kerjasama,
+    nilai_konklusi,
+    no_kelas,
+    semester,
+    deskripsi,
+    id_sosial
+  ], (err, results) => {
+    if (err) {
+      console.error('Error updating sikap_sosial:', err);
+      return res.status(500).json({ error: err.message });
+    }
+
+    return res.status(200).json({ message: 'Data sikap_sosial berhasil diperbarui' });
+  });
+});
+
+app.get('/sosial/:id_sosial', (req, res) => {
+  const id_sosial = req.params.id_sosial;
+
+  const query = `
+    SELECT * 
+    FROM sikap_sosial 
+    WHERE id_sosial = ?
+  `;
+
+  db.query(query, [id_sosial], (err, results) => {
+    if (err) {
+      console.error('Error querying sikap_sosial table:', err);
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (results.length === 0) {
+      return res.status(200).json({
+        id_sosial: null,
+        sabar: '',
+        jujur: '',
+        amanah: '',
+        tawakkal: '',
+        empati: '',
+        disiplin: '',
+        kerjasama: '',
+        nilai_konklusi: '',
+        no_kelas: '',
+        semester: '',
+        nisn: '',
+        deskripsi: ''
+      });
+    }
+
+    return res.status(200).json(results[0]);
+  });
+});
+
+app.get('/matapelajaran', (req, res) => {
+  const query = 'SELECT * FROM matapelajaran';
+  db.query(query, (err, results) => {
+      if (err) {
+          console.error('Error fetching data:', err);
+          res.status(500).send('Error fetching data');
+          return;
+      }
+      res.json(results);
+  });
+});
+
+app.get('/matapelajaran/:id', (req, res) => {
+  const { id } = req.params;
+  const query = 'SELECT * FROM matapelajaran WHERE id_matapelajaran = ?';
+  db.query(query,[id], (err, results) => {
+      if (err) {
+          console.error('Error fetching data:', err);
+          res.status(500).send('Error fetching data');
+          return;
+      }
+      res.json(results);
+  });
+});
+
+app.post('/matapelajaran', (req, res) => {
+  const { id_matapelajaran, nama } = req.body;
+  const query = 'INSERT INTO matapelajaran (id_matapelajaran, nama) VALUES (?, ?)';
+  db.query(query, [id_matapelajaran, nama], (err, result) => {
+      if (err) {
+          console.error('Error inserting data:', err);
+          res.status(500).send('Error inserting data');
+          return;
+      }
+      res.status(201).send('Matapelajaran added');
+  });
+});
+
+// Endpoint untuk memperbarui data matapelajaran
+app.put('/matapelajaran/:id', (req, res) => {
+  const { id } = req.params;
+  const { nama } = req.body;
+  const query = 'UPDATE matapelajaran SET nama = ? WHERE id_matapelajaran = ?';
+  db.query(query, [nama, id], (err, result) => {
+      if (err) {
+          console.error('Error updating data:', err);
+          res.status(500).send('Error updating data');
+          return;
+      }
+      if (result.affectedRows === 0) {
+          res.status(404).send('Matapelajaran not found');
+          return;
+      }
+      res.send('Matapelajaran updated');
+  });
+});
+
+app.get('/roster', (req, res) => {
+  const query = `
+      SELECT roster.id_roster, roster.id_matapelajaran, matapelajaran.nama AS mata_pelajaran, 
+             roster.id_kelas, kelas.no_kelas, kelas.nama_kelas, roster.nip, guru.nama AS guru, 
+             kelas.tahun_ajaran
+      FROM roster
+      JOIN matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
+      JOIN guru ON roster.nip = guru.nip
+      JOIN kelas ON roster.id_kelas = kelas.id_kelas
+  `;
+  db.query(query, (err, results) => {
+      if (err) {
+          console.error('Error fetching data:', err);
+          res.status(500).send('Error fetching data');
+          return;
+      }
+      res.json(results);
+  });
+});
+
+// Endpoint untuk mendapatkan data roster berdasarkan id_matapelajaran
+app.get('/roster/matapelajaran/:id_matapelajaran', (req, res) => {
+  const { id_matapelajaran } = req.params;
+  const query = 'SELECT * FROM roster WHERE id_matapelajaran = ?';
+  db.query(query, [id_matapelajaran], (err, results) => {
+      if (err) {
+          console.error('Error fetching data:', err);
+          res.status(500).send('Error fetching data');
+          return;
+      }
+      res.json(results);
+  });
+});
+
+// Endpoint untuk menambahkan data roster
+app.post('/roster', (req, res) => {
+  const { id_roster, id_matapelajaran, id_kelas, nip } = req.body;
+  const query = 'INSERT INTO roster (id_roster, id_matapelajaran, id_kelas, nip) VALUES (?, ?, ?, ?)';
+  db.query(query, [id_roster, id_matapelajaran, id_kelas, nip], (err, result) => {
+      if (err) {
+          console.error('Error inserting data:', err);
+          res.status(500).send('Error inserting data');
+          return;
+      }
+      res.status(201).send('Roster added');
+  });
+});
+
+// Endpoint untuk memperbarui data roster
+app.put('/roster/:id_roster', (req, res) => {
+  const { id_roster } = req.params;
+  const { id_matapelajaran, id_kelas, nip } = req.body;
+  const query = 'UPDATE roster SET id_matapelajaran = ?, id_kelas = ?, nip = ? WHERE id_roster = ?';
+  db.query(query, [id_matapelajaran, id_kelas, nip, id_roster], (err, result) => {
+      if (err) {
+          console.error('Error updating data:', err);
+          res.status(500).send('Error updating data');
+          return;
+      }
+      if (result.affectedRows === 0) {
+          res.status(404).send('Roster not found');
+          return;
+      }
+      res.send('Roster updated');
+  });
+});
+
 
 
 // Menjalankan server
