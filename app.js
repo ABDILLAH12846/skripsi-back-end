@@ -2875,11 +2875,15 @@ app.get('/rapor-hafalan/:nisn', (req,res) => {
   }
 
   const query = `
-  SELECT * FROM hafalan
-  WHERE hafalan.nisn = ? AND hafalan.no_kelas = ? AND hafalan.semester = ?
+  SELECT 
+    h.* , 
+    r.catatan_guru
+  FROM hafalan h
+  JOIN rapor r ON h.nisn = r.nisn
+  WHERE h.nisn = ? AND h.no_kelas = ? AND h.semester = ?
   ORDER BY
-      hafalan.bulan DESC,
-      hafalan.minggu DESC
+      h.bulan DESC,
+      h.minggu DESC
   LIMIT 1
   `
   db.query(query, [nisn, kelasInt, semester], (err,results) => {
