@@ -2646,6 +2646,28 @@ app.put('/orangtua/:id_orangtua', (req, res) => {
   });
 });
 
+app.delete('/orangtua/:id', (req, res) => {
+  const { id_orangtua } = req.params;
+
+  // SQL query untuk menghapus data kelas
+  const deleteSql = `
+    DELETE FROM orangtua
+    WHERE id_orangtua = ?
+  `;
+
+  db.query(deleteSql, [id_orangtua], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ error: 'Data kelas tidak ditemukan' });
+    }
+    
+    res.status(200).json({ message: 'Data kelas berhasil dihapus' });
+  });
+});
+
 app.get('/filterraport/:nip', (req, res) => {
   const nip = req.params.nip;
 
@@ -2681,14 +2703,14 @@ app.get('/raport/:nisn', (req, res) => {
     return res.status(400).json({ message: 'Kelas is required' });
   }
 
-  const nilaiQuery = `
+  const query = `
     SELECT 
         mp.nama AS nama_matapelajaran,
-        n.capaian_kompetensi,
-        COALESCE(uts.nilai, 0) AS UTS,
-        COALESCE(uas.nilai, 0) AS UAS,
-        COALESCE(uha.nilai, 0) AS UHA,
-        COALESCE(th.nilai, 0) AS TH
+        MAX(n.capaian_kompetensi) AS capaian_kompetensi,
+        COALESCE(MAX(uts.nilai), 0) AS UTS,
+        COALESCE(MAX(uas.nilai), 0) AS UAS,
+        COALESCE(MAX(uha.nilai), 0) AS UHA,
+        COALESCE(MAX(th.nilai), 0) AS TH
     FROM siswa s
     JOIN roster r ON s.id_kelas = r.id_kelas
     JOIN matapelajaran mp ON r.id_matapelajaran = mp.id_matapelajaran
@@ -2699,19 +2721,10 @@ app.get('/raport/:nisn', (req, res) => {
     LEFT JOIN nilai uha ON s.nisn = uha.nisn AND r.id_roster = uha.id_roster AND uha.tipe = 'UHA' AND uha.semester = ?
     LEFT JOIN nilai th ON s.nisn = th.nisn AND r.id_roster = th.id_roster AND th.tipe = 'TH' AND th.semester = ?
     WHERE s.nisn = ? AND a.no_kelas = ? AND a.semester = ?
-    GROUP BY mp.nama, n.capaian_kompetensi, uts.nilai, uas.nilai, uha.nilai, th.nilai
+    GROUP BY mp.nama
   `;
 
-  const absensiQuery = `
-    SELECT
-      COALESCE(SUM(CASE WHEN a.status = 'hadir' THEN 1 ELSE 0 END), 0) AS hadir,
-      COALESCE(SUM(CASE WHEN a.status = 'sakit' THEN 1 ELSE 0 END), 0) AS sakit,
-      COALESCE(SUM(CASE WHEN a.status = 'absen' THEN 1 ELSE 0 END), 0) AS absen
-    FROM absensi a
-    WHERE a.nisn = ? AND a.no_kelas = ? AND a.semester = ?
-  `;
-
-  db.query(nilaiQuery, [semester, semester, semester, semester, nisn, kelasInt, semester], (err, nilaiRows) => {
+  db.query(query, [semester, semester, semester, semester, nisn, kelasInt, semester], (err, nilaiRows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -2720,56 +2733,170 @@ app.get('/raport/:nisn', (req, res) => {
       return res.json({ message: 'No available data' });
     }
 
-    db.query(absensiQuery, [nisn, kelasInt, semester], (err, absensiRows) => {
-      if (err) {
-        return res.status(500).json({ error: err.message });
+    const processedRows = nilaiRows.map(row => {
+      const uts = row.UTS;
+      let predikat, keterangan;
+
+      if (uts > 92) {
+        predikat = 'A';
+        keterangan = 'TUNTAS';
+      } else if (uts > 83) {
+        predikat = 'B';
+        keterangan = 'TUNTAS';
+      } else if (uts > 74) {
+        predikat = 'C';
+        keterangan = 'TUNTAS';
+      } else if (uts > 64) {
+        predikat = 'D';
+        keterangan = 'TIDAK TUNTAS';
+      } else {
+        predikat = 'E';
+        keterangan = 'TIDAK TUNTAS';
       }
 
-      if (absensiRows.length === 0) {
-        return res.json({ message: 'No available data' });
-      }
-
-      const absensi = absensiRows[0];
-
-      // Process rows to calculate predikat and keterangan
-      const processedRows = nilaiRows.map(row => {
-        const uts = row.UTS;
-        let predikat, keterangan;
-
-        if (uts > 92) {
-          predikat = 'A';
-          keterangan = 'TUNTAS';
-        } else if (uts > 83) {
-          predikat = 'B';
-          keterangan = 'TUNTAS';
-        } else if (uts > 74) {
-          predikat = 'C';
-          keterangan = 'TUNTAS';
-        } else if (uts > 64) {
-          predikat = 'D';
-          keterangan = 'TIDAK TUNTAS';
-        } else {
-          predikat = 'E';
-          keterangan = 'TIDAK TUNTAS';
-        }
-
-        return {
-          nama_matapelajaran: row.nama_matapelajaran,
-          capaian_kompetensi: row.capaian_kompetensi,
-          UTS: uts,
-          UAS: row.UAS,
-          UHA: row.UHA,
-          TH: row.TH,
-          predikat: predikat,
-          keterangan: keterangan,
-          hadir: absensi.hadir,
-          sakit: absensi.sakit,
-          absen: absensi.absen
-        };
-      });
-
-      res.json(processedRows);
+      return {
+        nama_matapelajaran: row.nama_matapelajaran,
+        capaian_kompetensi: row.capaian_kompetensi,
+        UTS: uts,
+        UAS: row.UAS,
+        UHA: row.UHA,
+        TH: row.TH,
+        predikat: predikat,
+        keterangan: keterangan,
+      };
     });
+
+    // Filter out duplicates
+    const uniqueRows = [];
+    const map = new Map();
+    for (const row of processedRows) {
+      if (!map.has(row.nama_matapelajaran)) {
+        map.set(row.nama_matapelajaran, true);
+        uniqueRows.push(row);
+      }
+    }
+
+    res.json(uniqueRows);
+  });
+});
+
+
+app.get('/rapor/:nisn', (req,res) => {
+  const nisn = req.params.nisn;
+  const { semester, no_kelas } = req.query;
+
+  const kelasInt = parseInt(no_kelas, 10);
+
+  if (!semester) {
+    return res.status(400).json({ message: 'Semester is required' });
+  }
+
+  if (!no_kelas) {
+    return res.status(400).json({ message: 'Kelas is required' });
+  }
+
+  const query = `
+  SELECT
+    so.id_sosial,
+    so.sabar,
+    so.jujur,
+    so.amanah,
+    so.tawakkal,
+    so.empati,
+    so.disiplin,
+    so.kerjasama,
+    so.nilai_konklusi AS nilai_sosial,
+    so.deskripsi AS deskripsi_sosial,
+    sp.id_spiritual,
+    sp.sholat_fardhu,
+    sp.sholat_dhuha,
+    sp.sholat_tahajud,
+    sp.sunnah_rawatib,
+    sp.tilawah_quran,
+    sp.shaum_sunnah,
+    sp.shodaqoh,
+    sp.nilai_konklusi AS nilai_spiritual,
+    sp.deskripsi AS deskripsi_spiritual,
+    COALESCE(SUM(CASE WHEN a.status = 'hadir' THEN 1 ELSE 0 END), 0) AS hadir,
+    COALESCE(SUM(CASE WHEN a.status = 'sakit' THEN 1 ELSE 0 END), 0) AS sakit,
+    COALESCE(SUM(CASE WHEN a.status = 'absen' THEN 1 ELSE 0 END), 0) AS absen
+  FROM absensi a
+  JOIN sikap_sosial so ON a.nisn = so.nisn
+  LEFT JOIN sikap_spiritual sp ON a.nisn = sp.nisn
+  WHERE a.nisn = ? AND a.no_kelas = ? AND a.semester = ?
+  GROUP BY
+      so.id_sosial,
+      so.sabar,
+      so.jujur,
+      so.amanah,
+      so.tawakkal,
+      so.empati,
+      so.disiplin,
+      so.kerjasama,
+      so.nilai_konklusi,
+      so.deskripsi,
+      sp.id_spiritual,
+      sp.sholat_fardhu,
+      sp.sholat_dhuha,
+      sp.sholat_tahajud,
+      sp.sunnah_rawatib,
+      sp.tilawah_quran,
+      sp.shaum_sunnah,
+      sp.shodaqoh,
+      sp.nilai_konklusi,
+      sp.deskripsi
+  `
+  db.query(query, [nisn, kelasInt, semester], (err,results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (results.length === 0) {
+      return res.json({ message: 'No available data' });
+    }
+
+    res.json(results)
+  });
+});
+
+
+app.get('/rapor-hafalan/:nisn', (req,res) => {
+  const nisn = req.params.nisn;
+  const { semester, no_kelas } = req.query;
+
+  const kelasInt = parseInt(no_kelas, 10);
+
+  if (!semester) {
+    return res.status(400).json({ message: 'Semester is required' });
+  }
+
+  if (!no_kelas) {
+    return res.status(400).json({ message: 'Kelas is required' });
+  }
+
+  const query = `
+  SELECT 
+    h.* , 
+    r.catatan_guru
+  FROM hafalan h
+  JOIN rapor r ON h.nisn = r.nisn
+  WHERE h.nisn = ? AND h.no_kelas = ? AND h.semester = ?
+  ORDER BY
+      h.bulan DESC,
+      h.minggu DESC
+  LIMIT 1
+  `
+  db.query(query, [nisn, kelasInt, semester], (err,results) => {
+    console.log(results);
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (results.length < 1) {
+      return res.json({ message: 'No available data' });
+    }
+
+    res.json(results[0])
   });
 });
 
