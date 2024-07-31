@@ -2901,6 +2901,60 @@ app.get('/rapor-hafalan/:nisn', (req,res) => {
 });
 
 
+app.put('/rapor/:nisn', (req, res) => {
+  const { nisn } = req.params;
+  const { catatan_guru, no_kelas, semester } = req.body;
+
+  console.log('Received data:', { nisn, catatan_guru, no_kelas, semester });
+
+  // Check if the record exists
+  const checkQuery = `
+    SELECT id_rapor
+    FROM rapor
+    WHERE nisn = ? AND no_kelas = ? AND semester = ?
+  `;
+
+  db.query(checkQuery, [nisn, no_kelas, semester], (err, results) => {
+    if (err) {
+      console.error('Error executing checkQuery', err);
+      return res.status(500).send('Internal Server Error');
+    }
+
+    console.log('Check Query Results:', results);
+
+    if (results.length > 0) {
+      // Update the record
+      const updateQuery = `
+        UPDATE rapor
+        SET catatan_guru = ?
+        WHERE id_rapor = ?
+      `;
+      db.query(updateQuery, [catatan_guru, results[0].id_rapor], (err, results) => {
+        if (err) {
+          console.error('Error executing updateQuery', err);
+          return res.status(500).send('Internal Server Error');
+        }
+
+        return res.status(200).send('Record updated successfully');
+      });
+    } else {
+      // Insert a new record
+      const insertQuery = `
+        INSERT INTO rapor (catatan_guru, nisn, no_kelas, semester)
+        VALUES (?, ?, ?, ?)
+      `;
+      db.query(insertQuery, [catatan_guru, nisn, no_kelas, semester], (err, results) => {
+        if (err) {
+          console.error('Error executing insertQuery', err);
+          return res.status(500).send('Internal Server Error');
+        }
+
+        return res.status(201).send('Record created successfully');
+      });
+    }
+  });
+});
+
 
 
 
