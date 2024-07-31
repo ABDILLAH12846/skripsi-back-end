@@ -69,13 +69,13 @@ app.post('/login', (req, res) => {
   }
 
   const sqlGuru = `
-    SELECT g.*, k.id_kelas, k.no_kelas, k.nama_kelas, k.tahun_ajaran
+    SELECT g.*, k.id_kelas, k.no_kelas, k.nama_kelas
     FROM guru g
     LEFT JOIN kelas k ON g.nip = k.nip
     WHERE g.nip = ?
   `;
   const sqlSiswa = `
-    SELECT s.*, k.id_kelas, k.no_kelas, k.nama_kelas, k.tahun_ajaran
+    SELECT s.*, k.id_kelas, k.no_kelas, k.nama_kelas
     FROM siswa s
     LEFT JOIN kelas k ON s.id_kelas = k.id_kelas
     WHERE s.nisn = ?
@@ -416,7 +416,7 @@ app.get('/siswa', (req, res) => {
         COALESCE(ibu.no_telepon, '')
       ) AS no_telepon_orangtua,
       CONCAT(kelas.no_kelas, ' ', kelas.nama_kelas) AS kelas,
-      kelas.tahun_ajaran AS tahun_ajaran
+      CONCAT(tahun_ajaran.tahun_awal, '/', tahun_ajaran.tahun_akhir) AS tahun_ajaran
     FROM 
       siswa
     LEFT JOIN 
@@ -427,6 +427,8 @@ app.get('/siswa', (req, res) => {
       orangtua AS ibu ON siswa.id_ibu = ibu.id_orangtua
     LEFT JOIN
       kelas ON siswa.id_kelas = kelas.id_kelas
+    LEFT JOIN
+      tahun_ajaran ON kelas.id_tahunajaran = tahun_ajaran.id_tahunajaran
     WHERE siswa.status = ?
   `;
 
@@ -452,6 +454,7 @@ app.get('/siswa', (req, res) => {
     res.json(results);
   });
 });
+
 
 
 
@@ -966,6 +969,7 @@ app.get('/kelas', (req, res) => {
       kelas.id_kelas,
       kelas.no_kelas,
       kelas.nama_kelas,
+      kelas.id_tahunajaran,
       kelas.nip,
       guru.nama AS walikelas,
       kelas.tahun_ajaran
@@ -993,7 +997,8 @@ app.get('/kelas/:id', (req, res) => {
       guru.nama AS walikelas,
       kelas.tahun_ajaran,
       siswa.nisn,
-      siswa.nama AS nama_siswa
+      siswa.nama AS nama_siswa,
+      kelas.id_tahunajaran
     FROM 
       kelas
     LEFT JOIN 
@@ -1020,7 +1025,7 @@ app.get('/kelas/:id', (req, res) => {
       nama_kelas: results[0].nama_kelas,
       nip: results[0].nip,
       walikelas: results[0].walikelas,
-      tahun_ajaran: results[0].tahun_ajaran,
+      tahun_ajaran: results[0].id_tahunajaran,
       daftar_siswa: []
     };
 
@@ -1042,9 +1047,9 @@ app.post('/kelas', (req, res) => {
   const { id_kelas, no_kelas, nama_kelas, nip, tahun_ajaran } = req.body;
 
   // Validasi data input
-  if (!id_kelas || !no_kelas || !nama_kelas || !nip || !tahun_ajaran) {
-    return res.status(400).json({ error: 'Semua kolom wajib diisi' });
-  }
+  // if (!id_kelas || !no_kelas || !nama_kelas || !nip || !tahun_ajaran) {
+  //   return res.status(400).json({ error: 'Semua kolom wajib diisi' });
+  // }
 
   // SQL query untuk mengecek apakah nama kelas dan NIP sudah ada
   const checkSql = `
@@ -1064,7 +1069,7 @@ app.post('/kelas', (req, res) => {
 
     // SQL query untuk insert data ke tabel kelas
     const insertSql = `
-      INSERT INTO kelas (id_kelas, no_kelas, nama_kelas, nip, tahun_ajaran)
+      INSERT INTO kelas (id_kelas, no_kelas, nama_kelas, nip, id_tahunajaran)
       VALUES (?, ?, ?, ?, ?)
     `;
 
@@ -1089,7 +1094,7 @@ app.put('/kelas/:id_kelas', (req, res) => {
   // SQL query untuk memperbarui data kelas
   const updateSql = `
     UPDATE kelas
-    SET no_kelas = ?, nama_kelas = ?, nip = ?, tahun_ajaran = ?
+    SET no_kelas = ?, nama_kelas = ?, nip = ?, id_tahunajaran = ?
     WHERE id_kelas = ?
   `;
 
@@ -1160,6 +1165,7 @@ app.delete('/kelas/:id_kelas', (req, res) => {
 
 app.get('/kelasanyar/:id', (req, res) => {
   const { id } = req.params;
+  const { id_tahunajaran } = req.query;
   const sql = `
     SELECT 
       kelas.id_kelas,
@@ -1167,15 +1173,12 @@ app.get('/kelasanyar/:id', (req, res) => {
       kelas.nama_kelas,
       kelas.nip,
       guru.nama AS walikelas,
-      kelas.tahun_ajaran,
+      CONCAT(tahun_ajaran.tahun_awal, '/', tahun_ajaran.tahun_akhir) AS tahun_ajaran,
       siswa.nisn,
       siswa.nama AS nama_siswa,
       roster.id_roster,
       matapelajaran.nama AS nama_matapelajaran,
-      COALESCE(uts.nilai, 0) AS nilai_uts,
-      COALESCE(uas.nilai, 0) AS nilai_uas,
-      COALESCE(uha.nilai, 0) AS nilai_uha,
-      COALESCE(th.nilai, 0) AS nilai_th
+      COALESCE(uas.nilai, 0) AS nilai_uas
     FROM 
       kelas
     LEFT JOIN 
@@ -1187,20 +1190,16 @@ app.get('/kelasanyar/:id', (req, res) => {
     LEFT JOIN 
       matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
     LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UTS' AND semester = 'genap' AND tahun_ajaran = ?) AS uts ON siswa.nisn = uts.nisn AND matapelajaran.id_matapelajaran = uts.id_matapelajaran
+      tahun_ajaran ON kelas.id_tahunajaran = tahun_ajaran.id_tahunajaran
     LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UAS' AND semester = 'genap' AND tahun_ajaran = ?) AS uas ON siswa.nisn = uas.nisn AND matapelajaran.id_matapelajaran = uas.id_matapelajaran
-    LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'UHA' AND semester = 'genap' AND tahun_ajaran = ?) AS uha ON siswa.nisn = uha.nisn AND matapelajaran.id_matapelajaran = uha.id_matapelajaran
-    LEFT JOIN 
-      (SELECT nisn, id_matapelajaran, nilai FROM nilai WHERE tipe = 'TH' AND semester = 'genap' AND tahun_ajaran = ?) AS th ON siswa.nisn = th.nisn AND matapelajaran.id_matapelajaran = th.id_matapelajaran
+      (SELECT nisn, id_roster, nilai FROM nilai WHERE tipe = 'UAS' AND semester = 'ganjil' AND id_tahunajaran = ?) AS uas ON siswa.nisn = uas.nisn AND roster.id_roster = uas.id_roster
     WHERE
       kelas.id_kelas = ?
   `;
 
-  const tahun_ajaran = '2023/2024'; // Sesuaikan dengan tahun ajaran yang diinginkan
+  // const id_tahunajaran = 4962; // Gantilah dengan id_tahunajaran yang sesuai
 
-  db.query(sql, [tahun_ajaran, tahun_ajaran, tahun_ajaran, tahun_ajaran, id], (err, results) => {
+  db.query(sql, [id_tahunajaran, id], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -1242,33 +1241,38 @@ app.get('/kelasanyar/:id', (req, res) => {
         kelasInfo.daftar_siswa.push({
           nisn: row.nisn,
           nama: row.nama_siswa,
-          nilai_total: 0 // Menambahkan nilai_total untuk menyimpan hasil akhir
+          total_nilai_uas: 0,
+          jumlah_matapelajaran: 0,
+          status: 'Tidak Lulus' // Default status
         });
       }
     });
 
-    // Mengisi nilai_total siswa berdasarkan mata pelajaran
+    // Menghitung total nilai UAS dan jumlah mata pelajaran untuk setiap siswa
     results.forEach(row => {
       const siswa = kelasInfo.daftar_siswa.find(s => s.nisn === row.nisn);
       if (siswa) {
-        const nilai_uts = row.nilai_uts * 0.3;
-        const nilai_uas = row.nilai_uas * 0.3;
-        const nilai_uha_th = (row.nilai_uha + row.nilai_th) * 0.4;
-        siswa.nilai_total += nilai_uts + nilai_uas + nilai_uha_th;
+        console.log(`Siswa ${siswa.nama} (${siswa.nisn}): Nilai UAS = ${row.nilai_uas}`); // Log nilai UAS untuk debugging
+        siswa.total_nilai_uas += row.nilai_uas;
+        siswa.jumlah_matapelajaran += 1;
       }
     });
 
-    // Membagi nilai_total dengan jumlah mata pelajaran
-    const jumlahMatapelajaran = kelasInfo.matapelajaran.length;
-    if (jumlahMatapelajaran > 0) {
-      kelasInfo.daftar_siswa.forEach(siswa => {
-        siswa.nilai_total /= jumlahMatapelajaran;
-      });
-    }
+    // Menentukan status kelulusan berdasarkan rata-rata nilai UAS
+    kelasInfo.daftar_siswa.forEach(siswa => {
+      if (siswa.jumlah_matapelajaran > 0) {
+        const rataRataUAS = siswa.total_nilai_uas / siswa.jumlah_matapelajaran;
+        console.log(`Siswa ${siswa.nama} (${siswa.nisn}): Total Nilai UAS = ${siswa.total_nilai_uas}, Jumlah Mata Pelajaran = ${siswa.jumlah_matapelajaran}, Rata-Rata UAS = ${rataRataUAS}`); // Log rata-rata UAS untuk debugging
+        siswa.status = rataRataUAS >= 70 ? 'Lulus' : 'Tidak Lulus';
+      }
+    });
 
     res.json(kelasInfo);
   });
 });
+
+
+
 
 
 
@@ -1916,6 +1920,7 @@ app.get('/nilai/matapelajaran/:id_roster/:nisn/:semester', (req, res) => {
       kelas.no_kelas,
       kelas.nama_kelas,
       kelas.tahun_ajaran,
+      kelas.id_tahunajaran,
       roster.id_roster AS id_matapelajaran,
       matapelajaran.nama AS nama_matapelajaran,
       COALESCE(uts.id_nilai, NULL) AS uts_id_nilai,
@@ -1961,6 +1966,7 @@ app.get('/nilai/matapelajaran/:id_roster/:nisn/:semester', (req, res) => {
       no_kelas: result.no_kelas,
       nama_kelas: result.nama_kelas,
       tahun_ajaran: result.tahun_ajaran,
+      id_tahunajaran: result.id_tahunajaran,
       id_matapelajaran: result.id_matapelajaran,
       nama_matapelajaran: result.nama_matapelajaran,
       nilai_seluruh: [
@@ -1977,19 +1983,19 @@ app.get('/nilai/matapelajaran/:id_roster/:nisn/:semester', (req, res) => {
 
 
 app.post('/nilai', (req, res) => {
-  const { id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, no_kelas, capaian_kompetensi } = req.body;
+  const { id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, id_tahunajaran, no_kelas, capaian_kompetensi } = req.body;
 
   // Validasi data input
-  if (!id_nilai || !nisn || !id_matapelajaran || !tipe || !nilai || !semester || !tahun_ajaran || !no_kelas) {
+  if (!id_nilai || !nisn || !id_matapelajaran || !tipe || !nilai || !semester || !id_tahunajaran || !no_kelas) {
     return res.status(400).json({ error: 'Kolom id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, dan no_kelas wajib diisi' });
   }
 
   const sql = `
-    INSERT INTO nilai (id_nilai, nisn, id_roster, tipe, nilai, semester, tahun_ajaran, no_kelas, capaian_kompetensi)
+    INSERT INTO nilai (id_nilai, nisn, id_roster, tipe, nilai, semester, id_tahunajaran, no_kelas, capaian_kompetensi)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
-  db.query(sql, [id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, tahun_ajaran, no_kelas, capaian_kompetensi || null], (err, result) => {
+  db.query(sql, [id_nilai, nisn, id_matapelajaran, tipe, nilai, semester, id_tahunajaran, no_kelas, capaian_kompetensi || null], (err, result) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -2009,7 +2015,7 @@ app.put('/nilai/:id_nilai', (req, res) => {
 
   const sql = `
     UPDATE nilai 
-    SET nisn = ?, id_roster = ?, tipe = ?, nilai = ?, semester = ?, tahun_ajaran = ?, no_kelas = ?, capaian_kompetensi = ?
+    SET nisn = ?, id_roster = ?, tipe = ?, nilai = ?, semester = ?, id_tahunajaran = ?, no_kelas = ?, capaian_kompetensi = ?
     WHERE id_nilai = ?
   `;
 
@@ -3705,6 +3711,97 @@ app.put('/roster/:id_roster', (req, res) => {
       res.send('Roster updated');
   });
 });
+
+// GET all tahun_ajaran
+app.get('/tahun-ajaran', (req, res) => {
+  const sql = 'SELECT * FROM tahun_ajaran';
+  db.query(sql, (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(results);
+  });
+});
+
+// GET tahun_ajaran by ID
+app.get('/tahun-ajaran/:id', (req, res) => {
+  const { id } = req.params;
+  const sql = 'SELECT * FROM tahun_ajaran WHERE id_tahunajaran = ?';
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (result.length === 0) {
+      return res.status(404).json({ message: 'Tahun ajaran not found' });
+    }
+    res.json(result[0]);
+  });
+});
+
+// POST new tahun_ajaran
+// POST new tahun_ajaran
+app.post('/tahun-ajaran', (req, res) => {
+  const { id_tahunajaran, tahun_awal } = req.body;
+
+  if (!id_tahunajaran || !tahun_awal) {
+    return res.status(400).json({ error: 'Kolom id_tahunajaran dan tahun_awal wajib diisi' });
+  }
+
+  const tahun_akhir = parseInt(tahun_awal) + 1;
+
+  const checkSql = 'SELECT * FROM tahun_ajaran WHERE tahun_awal = ?';
+  db.query(checkSql, [tahun_awal], (checkErr, checkResult) => {
+    if (checkErr) {
+      return res.status(500).json({ error: checkErr.message });
+    }
+    if (checkResult.length > 0) {
+      return res.status(400).json({ error: 'Tahun awal sudah ada' });
+    }
+
+    const sql = 'INSERT INTO tahun_ajaran (id_tahunajaran, tahun_awal, tahun_akhir) VALUES (?, ?, ?)';
+    db.query(sql, [id_tahunajaran, tahun_awal, tahun_akhir], (err, result) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.status(201).json({ message: 'Tahun ajaran berhasil ditambahkan', id: result.insertId });
+    });
+  });
+});
+
+// PUT (update) tahun_ajaran by ID
+app.put('/tahun-ajaran/:id', (req, res) => {
+  const { id } = req.params;
+  const { tahun_awal } = req.body;
+
+  if (!tahun_awal) {
+    return res.status(400).json({ error: 'Kolom tahun_awal wajib diisi' });
+  }
+
+  const tahun_akhir = parseInt(tahun_awal) + 1;
+
+  const checkSql = 'SELECT * FROM tahun_ajaran WHERE tahun_awal = ? AND id_tahunajaran != ?';
+  db.query(checkSql, [tahun_awal, id], (checkErr, checkResult) => {
+    if (checkErr) {
+      return res.status(500).json({ error: checkErr.message });
+    }
+    if (checkResult.length > 0) {
+      return res.status(400).json({ error: 'Tahun awal sudah ada' });
+    }
+
+    const sql = 'UPDATE tahun_ajaran SET tahun_awal = ?, tahun_akhir = ? WHERE id_tahunajaran = ?';
+    db.query(sql, [tahun_awal, tahun_akhir, id], (err, result) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: 'Tahun ajaran tidak ditemukan' });
+      }
+      res.json({ message: 'Tahun ajaran berhasil diperbarui' });
+    });
+  });
+});
+
+
 
 
 
