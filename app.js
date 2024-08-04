@@ -2675,27 +2675,32 @@ app.put('/orangtua/:id_orangtua', (req, res) => {
   });
 });
 
-app.delete('/orangtua/:id', (req, res) => {
+app.delete('/orangtua/:id_orangtua', (req, res) => {
   const { id_orangtua } = req.params;
+  const { status } = req.query;
 
-  // SQL query untuk menghapus data kelas
+  if (!status) {
+    return res.status(400).json({ error: 'Status parameter is required' });
+  }
+
   const deleteSql = `
     DELETE FROM orangtua
-    WHERE id_orangtua = ?
+    WHERE id_orangtua = ? AND status = ?
   `;
 
-  db.query(deleteSql, [id_orangtua], (err, results) => {
+  db.query(deleteSql, [id_orangtua, status], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     
     if (results.affectedRows === 0) {
-      return res.status(404).json({ error: 'Data kelas tidak ditemukan' });
+      return res.status(404).json({ error: 'Data orangtua tidak ditemukan' });
     }
     
-    res.status(200).json({ message: 'Data kelas berhasil dihapus' });
+    res.status(200).json({ message: 'Data orangtua berhasil dihapus' });
   });
 });
+
 
 app.get('/filterraport/:nip', (req, res) => {
   const nip = req.params.nip;
@@ -3708,6 +3713,27 @@ app.put('/matapelajaran/:id', (req, res) => {
   });
 });
 
+app.delete('/matapelajaran/:id_matapelajaran', (req, res) => {
+  const { id_matapelajaran } = req.params;
+
+  // SQL query untuk menghapus data kelas
+  const deleteSql = `
+    DELETE FROM matapelajaran
+    WHERE id_matapelajaran = ?
+  `;
+
+  db.query(deleteSql, [id_matapelajaran], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ error: 'Data matapelajaran tidak ditemukan' });
+    }
+    
+    res.status(200).json({ message: 'Data matapelajaran berhasil dihapus' });
+  });
+});
 
 app.get('/roster', (req, res) => {
   const query = `
