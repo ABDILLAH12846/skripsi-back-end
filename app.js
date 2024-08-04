@@ -23,9 +23,9 @@ const multerGoogleStorage = multer({
 }).single('photo');
 
 const db = mysql.createConnection({
-  host: '35.192.154.48', // Nama host dari database Anda
+  host: '34.72.53.116', // Nama host dari database Anda
   user: 'root',      // Nama pengguna dari database Anda
-  password: 'zakyirhamna',  // Kata sandi dari database Anda
+  password: 'Zakyirhamna123',  // Kata sandi dari database Anda
   database: 'al-izzah' // Nama database Anda
 });
 
@@ -964,27 +964,42 @@ app.put('/ibusiswa', (req, res) => {
 
 
 app.get('/kelas', (req, res) => {
-  const sql = `
-  SELECT 
-      kelas.id_kelas,
-      kelas.no_kelas,
-      kelas.nama_kelas,
-      kelas.id_tahunajaran,
-      kelas.nip,
-      guru.nama AS walikelas,
-      kelas.tahun_ajaran
-  FROM 
-      kelas
-  JOIN 
-      guru ON kelas.nip = guru.nip;
-`;
-  db.query(sql, (err, results) => {
+  const { id_tingkatan } = req.query;
+
+  let sql = `
+    SELECT 
+        kelas.id_kelas,
+        kelas.nama_kelas,
+        kelas.id_tahunajaran,
+        kelas.no_kelas,
+        kelas.nip,
+        guru.nama AS walikelas,
+        kelas.tahun_ajaran,
+        tingkatan.nomor AS tingkatan
+    FROM 
+        kelas
+    JOIN 
+        guru ON kelas.nip = guru.nip
+    LEFT JOIN 
+        tingkatan ON kelas.tingkatan = tingkatan.id_tingkatan
+  `;
+
+  const params = [];
+
+  if (id_tingkatan) {
+    sql += ' WHERE kelas.tingkatan = ?';
+    params.push(id_tingkatan);
+  }
+
+  db.query(sql, params, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     res.json(results);
   });
 });
+
+
 
 app.get('/kelas/:id', (req, res) => {
   const { id } = req.params;
@@ -996,13 +1011,16 @@ app.get('/kelas/:id', (req, res) => {
       kelas.nip,
       guru.nama AS walikelas,
       kelas.tahun_ajaran,
+      kelas.id_tahunajaran,
+      tingkatan.nomor AS tingkatan,
       siswa.nisn,
-      siswa.nama AS nama_siswa,
-      kelas.id_tahunajaran
+      siswa.nama AS nama_siswa
     FROM 
       kelas
     LEFT JOIN 
       guru ON kelas.nip = guru.nip
+    LEFT JOIN 
+      tingkatan ON kelas.tingkatan = tingkatan.id_tingkatan
     LEFT JOIN 
       siswa ON kelas.id_kelas = siswa.id_kelas
     WHERE
@@ -1025,7 +1043,9 @@ app.get('/kelas/:id', (req, res) => {
       nama_kelas: results[0].nama_kelas,
       nip: results[0].nip,
       walikelas: results[0].walikelas,
-      tahun_ajaran: results[0].id_tahunajaran,
+      tahun_ajaran: results[0].tahun_ajaran,
+      id_tahunajaran: results[0].id_tahunajaran,
+      tingkatan: results[0].tingkatan,
       daftar_siswa: []
     };
 
@@ -1043,13 +1063,14 @@ app.get('/kelas/:id', (req, res) => {
   });
 });
 
+
 app.post('/kelas', (req, res) => {
-  const { id_kelas, no_kelas, nama_kelas, nip, tahun_ajaran } = req.body;
+  const { id_kelas, no_kelas, nama_kelas, nip, tahun_ajaran, tingkatan } = req.body;
 
   // Validasi data input
-  // if (!id_kelas || !no_kelas || !nama_kelas || !nip || !tahun_ajaran) {
-  //   return res.status(400).json({ error: 'Semua kolom wajib diisi' });
-  // }
+  if (!id_kelas || !no_kelas || !nama_kelas || !nip || !tahun_ajaran || !tingkatan) {
+    return res.status(400).json({ error: 'Semua kolom wajib diisi' });
+  }
 
   // SQL query untuk mengecek apakah nama kelas dan NIP sudah ada
   const checkSql = `
@@ -1069,11 +1090,11 @@ app.post('/kelas', (req, res) => {
 
     // SQL query untuk insert data ke tabel kelas
     const insertSql = `
-      INSERT INTO kelas (id_kelas, no_kelas, nama_kelas, nip, id_tahunajaran)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO kelas (id_kelas, no_kelas, nama_kelas, nip, id_tahunajaran, tingkatan)
+      VALUES (?, ?, ?, ?, ?, ?)
     `;
 
-    db.query(insertSql, [id_kelas, no_kelas, nama_kelas, nip, tahun_ajaran], (err, results) => {
+    db.query(insertSql, [id_kelas, no_kelas, nama_kelas, nip, tahun_ajaran, tingkatan], (err, results) => {
       if (err) {
         return res.status(500).json({ error: err.message });
       }
@@ -1082,23 +1103,24 @@ app.post('/kelas', (req, res) => {
   });
 });
 
+
 app.put('/kelas/:id_kelas', (req, res) => {
   const { id_kelas } = req.params;
-  const { no_kelas, nama_kelas, nip, tahun_ajaran } = req.body;
+  const { no_kelas, nama_kelas, nip, tahun_ajaran, tingkatan } = req.body;
 
   // Validasi data input
-  if (!no_kelas || !nama_kelas || !nip || !tahun_ajaran) {
+  if (!no_kelas || !nama_kelas || !nip || !tahun_ajaran || !tingkatan) {
     return res.status(400).json({ error: 'Semua kolom wajib diisi' });
   }
 
   // SQL query untuk memperbarui data kelas
   const updateSql = `
     UPDATE kelas
-    SET no_kelas = ?, nama_kelas = ?, nip = ?, id_tahunajaran = ?
+    SET no_kelas = ?, nama_kelas = ?, nip = ?, id_tahunajaran = ?, tingkatan = ?
     WHERE id_kelas = ?
   `;
 
-  db.query(updateSql, [no_kelas, nama_kelas, nip, tahun_ajaran, id_kelas], (err, results) => {
+  db.query(updateSql, [no_kelas, nama_kelas, nip, tahun_ajaran, tingkatan, id_kelas], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -1110,6 +1132,7 @@ app.put('/kelas/:id_kelas', (req, res) => {
     res.status(200).json({ message: 'Data kelas berhasil diperbarui' });
   });
 });
+
 
 app.put('/kelas/:id_kelas/no_tahun', (req, res) => {
   const { id_kelas } = req.params;
@@ -3619,34 +3642,74 @@ app.get('/matapelajaran/:id', (req, res) => {
 });
 
 app.post('/matapelajaran', (req, res) => {
-  const { id_matapelajaran, nama } = req.body;
-  const query = 'INSERT INTO matapelajaran (id_matapelajaran, nama) VALUES (?, ?)';
-  db.query(query, [id_matapelajaran, nama], (err, result) => {
+  const { id_matapelajaran, nama, id_tingkatan } = req.body;
+
+  // Validasi data input
+  if (!id_matapelajaran || !nama || !id_tingkatan) {
+    return res.status(400).json({ error: 'Semua kolom wajib diisi' });
+  }
+
+  // SQL query untuk mengecek apakah ada mata pelajaran dengan nama yang sama dan id_tingkatan yang sama
+  const checkSql = `
+    SELECT id_matapelajaran
+    FROM matapelajaran
+    WHERE nama = ? AND id_tingkatan = ?
+  `;
+  db.query(checkSql, [nama, id_tingkatan], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (results.length > 0) {
+      return res.status(400).json({ message: 'Nama mata pelajaran sudah ada untuk id_tingkatan ini' });
+    }
+
+    // Insert new mata pelajaran
+    const insertSql = 'INSERT INTO matapelajaran (id_matapelajaran, nama, id_tingkatan) VALUES (?, ?, ?)';
+    db.query(insertSql, [id_matapelajaran, nama, id_tingkatan], (err, result) => {
       if (err) {
-          console.error('Error inserting data:', err);
-          res.status(500).send('Error inserting data');
-          return;
+        return res.status(500).json({ error: err.message });
       }
-      res.status(201).send('Matapelajaran added');
+      res.status(201).json({ message: 'Mata Pelajaran created', id: result.insertId });
+    });
   });
 });
+
 
 // Endpoint untuk memperbarui data matapelajaran
 app.put('/matapelajaran/:id', (req, res) => {
   const { id } = req.params;
-  const { nama } = req.body;
-  const query = 'UPDATE matapelajaran SET nama = ? WHERE id_matapelajaran = ?';
-  db.query(query, [nama, id], (err, result) => {
+  const { nama, id_tingkatan } = req.body;
+
+  // Validasi data input
+  if (!nama || !id_tingkatan) {
+    return res.status(400).json({ error: 'Semua kolom wajib diisi' });
+  }
+
+  // SQL query untuk mengecek apakah ada mata pelajaran dengan nama yang sama dan id_tingkatan yang sama
+  const checkSql = `
+    SELECT id_matapelajaran
+    FROM matapelajaran
+    WHERE nama = ? AND id_tingkatan = ? AND id_matapelajaran != ?
+  `;
+  db.query(checkSql, [nama, id_tingkatan, id], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (results.length > 0) {
+      return res.status(400).json({ message: 'Nama mata pelajaran sudah ada untuk id_tingkatan ini' });
+    }
+
+    // Update mata pelajaran
+    const updateSql = 'UPDATE matapelajaran SET nama = ?, id_tingkatan = ? WHERE id_matapelajaran = ?';
+    db.query(updateSql, [nama, id_tingkatan, id], (err, result) => {
       if (err) {
-          console.error('Error updating data:', err);
-          res.status(500).send('Error updating data');
-          return;
+        return res.status(500).json({ error: err.message });
       }
       if (result.affectedRows === 0) {
-          res.status(404).send('Matapelajaran not found');
-          return;
+        return res.status(404).json({ message: 'Mata Pelajaran not found' });
       }
-      res.send('Matapelajaran updated');
+      res.status(200).json({ message: 'Mata Pelajaran updated' });
+    });
   });
 });
 
@@ -3691,6 +3754,30 @@ app.get('/roster', (req, res) => {
       res.json(results);
   });
 });
+
+app.get('/roster/:id_roster', (req, res) => {
+  const { id_roster } = req.params;
+  const query = `
+      SELECT roster.id_roster, roster.id_matapelajaran, matapelajaran.nama AS mata_pelajaran, 
+             roster.id_kelas, kelas.no_kelas, kelas.nama_kelas, roster.nip, guru.nama AS guru, 
+             kelas.tingkatan,
+             kelas.id_tahunajaran
+      FROM roster
+      JOIN matapelajaran ON roster.id_matapelajaran = matapelajaran.id_matapelajaran
+      JOIN guru ON roster.nip = guru.nip
+      JOIN kelas ON roster.id_kelas = kelas.id_kelas
+      WHERE roster.id_roster = ?
+  `;
+  db.query(query, [id_roster], (err, results) => {
+      if (err) {
+          console.error('Error fetching data:', err);
+          res.status(500).send('Error fetching data');
+          return;
+      }
+      res.json(results);
+  });
+});
+
 
 // Endpoint untuk mendapatkan data roster berdasarkan id_matapelajaran
 app.get('/roster/matapelajaran/:id_matapelajaran', (req, res) => {
@@ -3738,6 +3825,25 @@ app.put('/roster/:id_roster', (req, res) => {
       res.send('Roster updated');
   });
 });
+
+app.delete('/roster/:id_roster', (req, res) => {
+  const { id_roster } = req.params;
+  const query = 'DELETE FROM roster WHERE id_roster = ?';
+  
+  db.query(query, [id_roster], (err, result) => {
+      if (err) {
+          console.error('Error deleting data:', err);
+          res.status(500).send('Error deleting data');
+          return;
+      }
+      if (result.affectedRows === 0) {
+          res.status(404).send('Roster not found');
+          return;
+      }
+      res.send('Roster deleted successfully');
+  });
+});
+
 
 // GET all tahun_ajaran
 app.get('/tahun-ajaran', (req, res) => {
@@ -3828,7 +3934,210 @@ app.put('/tahun-ajaran/:id', (req, res) => {
   });
 });
 
+app.get('/tingkatan', (req, res) => {
+  const query = `
+    SELECT 
+      t.id_tingkatan, 
+      t.nomor, 
+      t.id_kurikulum, 
+      kur.nama_kurikulum AS kurikulum, 
+      GROUP_CONCAT(k.nama_kelas ORDER BY k.nama_kelas SEPARATOR ', ') AS kelas
+    FROM 
+      tingkatan t
+    LEFT JOIN 
+      kelas k ON t.id_tingkatan = k.tingkatan
+    LEFT JOIN 
+      kurikulum kur ON t.id_kurikulum = kur.id_kurikulum
+    GROUP BY 
+      t.id_tingkatan, t.nomor, t.id_kurikulum, kur.nama_kurikulum
+  `;
+  db.query(query, (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
 
+    res.status(200).json(results);
+  });
+});
+
+
+
+
+// GET tingkatan by id with classes
+app.get('/tingkatan/:id', (req, res) => {
+  const { id } = req.params;
+  const query = `
+    SELECT t.id_tingkatan, t.nomor, t.id_kurikulum, k.id_kelas, k.nama_kelas, kur.nama_kurikulum
+    FROM tingkatan t
+    LEFT JOIN kelas k ON t.id_tingkatan = k.tingkatan
+    LEFT JOIN kurikulum kur ON t.id_kurikulum = kur.id_kurikulum
+    WHERE t.id_tingkatan = ?
+  `;
+  db.query(query, [id], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Tingkatan not found' });
+    }
+    // Extracting tingkatan info and classes
+    const tingkatan = {
+      id_tingkatan: results[0].id_tingkatan,
+      nomor: results[0].nomor,
+      id_kurikulum: results[0].id_kurikulum,
+      nama_kurikulum: results[0].nama_kurikulum,
+      kelas: results
+        .filter(row => row.id_kelas)
+        .map(row => ({
+          id_kelas: row.id_kelas,
+          nama_kelas: row.nama_kelas
+        }))
+    };
+    
+    res.status(200).json(tingkatan);
+  });
+});
+
+
+// POST new tingkatan
+app.post('/tingkatan', (req, res) => {
+  const { id_tingkatan, nomor, id_kurikulum } = req.body;
+
+  // Check for existing nomor
+  const checkQuery = 'SELECT * FROM tingkatan WHERE nomor = ?';
+  db.query(checkQuery, [nomor], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (results.length > 0) {
+      return res.status(400).json({ message: 'Nomor already exists' });
+    }
+
+    // Insert new tingkatan
+    const query = 'INSERT INTO tingkatan (id_tingkatan, nomor, id_kurikulum) VALUES (?, ?, ?)';
+    db.query(query, [id_tingkatan, nomor, id_kurikulum], (err, result) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.status(201).json({ message: 'Tingkatan created', id: result.insertId });
+    });
+  });
+});
+
+
+// PUT update tingkatan
+app.put('/tingkatan/:id', (req, res) => {
+  const { id } = req.params;
+  const { nomor, id_kurikulum } = req.body;
+
+  // Check for existing nomor
+  const checkQuery = 'SELECT * FROM tingkatan WHERE nomor = ? AND id_tingkatan != ?';
+  db.query(checkQuery, [nomor, id], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (results.length > 0) {
+      return res.status(400).json({ message: 'Nomor already exists' });
+    }
+
+    // Update tingkatan
+    const query = 'UPDATE tingkatan SET nomor = ?, id_kurikulum = ? WHERE id_tingkatan = ?';
+    db.query(query, [nomor, id_kurikulum, id], (err, result) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: 'Tingkatan not found' });
+      }
+      res.status(200).json({ message: 'Tingkatan updated' });
+    });
+  });
+});
+
+// DELETE tingkatan by id
+app.delete('/tingkatan/:id', (req, res) => {
+  const { id } = req.params;
+  
+  const query = 'DELETE FROM tingkatan WHERE id_tingkatan = ?';
+
+  db.query(query, [id], (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Tingkatan not found' });
+    }
+    res.status(200).json({ message: 'Tingkatan deleted' });
+  });
+});
+
+
+app.get('/kurikulum', (req, res) => {
+  const query = 'SELECT * FROM kurikulum';
+  db.query(query, (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.status(200).json(results);
+  });
+});
+
+app.get('/kurikulum/:id', (req, res) => {
+  const { id } = req.params;
+  const query = 'SELECT * FROM kurikulum WHERE id_kurikulum = ?';
+  db.query(query, [id], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Kurikulum not found' });
+    }
+    res.status(200).json(results[0]);
+  });
+});
+
+app.post('/kurikulum', (req, res) => {
+  const { id_kurikulum, nama_kurikulum } = req.body;
+
+  const query = 'INSERT INTO kurikulum (id_kurikulum, nama_kurikulum) VALUES (?, ?)';
+  db.query(query, [id_kurikulum, nama_kurikulum], (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.status(201).json({ message: 'Kurikulum created', id: result.insertId });
+  });
+});
+
+app.put('/kurikulum/:id', (req, res) => {
+  const { id } = req.params;
+  const { nama_kurikulum } = req.body;
+
+  const query = 'UPDATE kurikulum SET nama_kurikulum = ? WHERE id_kurikulum = ?';
+  db.query(query, [nama_kurikulum, id], (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Kurikulum not found' });
+    }
+    res.status(200).json({ message: 'Kurikulum updated' });
+  });
+});
+
+app.delete('/kurikulum/:id', (req, res) => {
+  const { id } = req.params;
+
+  const query = 'DELETE FROM kurikulum WHERE id_kurikulum = ?';
+  db.query(query, [id], (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Kurikulum not found' });
+    }
+    res.status(200).json({ message: 'Kurikulum deleted' });
+  });
+});
 
 
 
