@@ -582,7 +582,7 @@ app.get('/siswa/:nisn', (req, res) => {
         ibu.pekerjaan AS ibu_pekerjaan,
         ibu.gaji AS ibu_gaji,
         CONCAT(kelas.no_kelas, ' ', kelas.nama_kelas) AS kelas,
-        kelas.tahun_ajaran AS tahun_ajaran
+        CONCAT(tahun_ajaran.tahun_awal, '/', tahun_ajaran.tahun_akhir) AS tahun_ajaran
     FROM 
         siswa
     LEFT JOIN 
@@ -593,6 +593,8 @@ app.get('/siswa/:nisn', (req, res) => {
         orangtua AS ibu ON siswa.id_ibu = ibu.id_orangtua
     LEFT JOIN
         kelas ON siswa.id_kelas = kelas.id_kelas
+    LEFT JOIN
+        tahun_ajaran ON kelas.id_tahunajaran = tahun_ajaran.id_tahunajaran
     WHERE siswa.nisn = ?;
   `;
   
@@ -652,6 +654,7 @@ app.get('/siswa/:nisn', (req, res) => {
     });
   });
 });
+
 
 
 
@@ -3617,8 +3620,29 @@ app.get('/sosial/:id_sosial', (req, res) => {
 });
 
 app.get('/matapelajaran', (req, res) => {
-  const query = 'SELECT * FROM matapelajaran';
-  db.query(query, (err, results) => {
+  const { id_tingkatan } = req.query;
+
+  let query = `
+    SELECT 
+      mp.id_matapelajaran,
+      mp.nama,
+      mp.id_tingkatan,
+      t.nomor AS nomor_tingkatan,
+      k.nama_kurikulum
+    FROM 
+      matapelajaran mp
+    LEFT JOIN 
+      tingkatan t ON mp.id_tingkatan = t.id_tingkatan
+    LEFT JOIN 
+      kurikulum k ON t.id_kurikulum = k.id_kurikulum
+  `;
+
+  // Add WHERE clause if id_tingkatan is provided
+  if (id_tingkatan) {
+    query += ` WHERE mp.id_tingkatan = ?`;
+  }
+
+  db.query(query, [id_tingkatan], (err, results) => {
       if (err) {
           console.error('Error fetching data:', err);
           res.status(500).send('Error fetching data');
@@ -3627,6 +3651,8 @@ app.get('/matapelajaran', (req, res) => {
       res.json(results);
   });
 });
+
+
 
 app.get('/matapelajaran/:id', (req, res) => {
   const { id } = req.params;
