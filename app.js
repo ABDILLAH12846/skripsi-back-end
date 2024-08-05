@@ -1166,6 +1166,35 @@ app.put('/kelas/:id_kelas/no_tahun', (req, res) => {
   });
 });
 
+app.put('/kelas/:id_kelas/tingkatan', (req, res) => {
+  const { id_kelas } = req.params;
+  const { tingkatan } = req.body;
+
+  // Validasi data input
+  if (!tingkatan) {
+    return res.status(400).json({ error: 'Kolom nomor kelas dan tahun ajaran wajib diisi' });
+  }
+
+  // SQL query untuk memperbarui nomor kelas dan tahun ajaran
+  const updateSql = `
+    UPDATE kelas
+    SET tingkatan = ?, no_kelas = ?
+    WHERE id_kelas = ?
+  `;
+
+  db.query(updateSql, [tingkatan.id_tingkatan, tingkatan.nomor, id_kelas], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ error: 'Data kelas tidak ditemukan' });
+    }
+    
+    res.status(200).json({ message: 'Nomor kelas dan tahun ajaran berhasil diperbarui' });
+  });
+});
+
 
 app.delete('/kelas/:id_kelas', (req, res) => {
   const { id_kelas } = req.params;
