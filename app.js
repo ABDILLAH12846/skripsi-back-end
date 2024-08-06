@@ -312,41 +312,40 @@ app.get('/guru/:nip', (req, res) => {
 
 
 app.post('/guru', (req, res) => {
-  const { nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK, url } = req.body;
+  const { nip, nama, nuptk, nrg, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, NIK, No_KK, url, tanggal_menjadi_guru, sertifikasi } = req.body;
 
   // Encrypt the password
   const encryptedPassword = encryptPassword(password);
 
   const sql = `
-    INSERT INTO guru (nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK, url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO guru (nip, nama, nuptk, nrg, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, NIK, No_KK, url, tanggal_menjadi_guru, sertifikasi)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
-  
-  db.query(sql, [nip, nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, jabatan, status_kepegawaian, jenjang, jurusan, encryptedPassword, tanggal_mulai_tugas, status, valid, NIK, No_KK, url], (err, results) => {
+
+  const values = [nip, nama, nuptk, nrg, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, encryptedPassword, tanggal_mulai_tugas, status, NIK, No_KK, url, tanggal_menjadi_guru, sertifikasi];
+
+  db.query(sql, values, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     res.status(201).json({ message: 'Guru baru berhasil ditambahkan', id: results.insertId });
   });
 });
-
-
-
 app.put('/guru/:nip', (req, res) => {
   const { nip } = req.params;
-  const { nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, valid, NIK, No_KK, url } = req.body;
+  const { nama, nuptk, nrg, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, password, tanggal_mulai_tugas, status, NIK, No_KK, url, tanggal_menjadi_guru, sertifikasi} = req.body;
 
   // Enkripsi password jika ada
   const encryptedPassword = password ? encryptPassword(password) : null;
 
   const sql = `
     UPDATE guru
-    SET nama = ?, nuptk = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, status_kepegawaian = ?, jenjang = ?, jurusan = ?, jabatan = ?, password = ?, tanggal_mulai_tugas = ?, status = ?, valid = ?, NIK = ?, No_KK = ?, url = ?
+    SET nama = ?, nuptk = ?, nrg = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, status_kepegawaian = ?, jenjang = ?, jurusan = ?, jabatan = ?, password = ?, tanggal_mulai_tugas = ?, status = ?, NIK = ?, No_KK = ?, url = ?, tanggal_menjadi_guru = ?, sertifikasi = ?
     WHERE nip = ?
   `;
 
   // Gunakan array parameter yang berbeda tergantung pada apakah password diberikan
-  const queryParams = [nama, nuptk, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, encryptedPassword, tanggal_mulai_tugas, status, valid, NIK, No_KK, url, nip];
+  const queryParams = [nama, nuptk, nrg, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, status_kepegawaian, jenjang, jurusan, jabatan, encryptedPassword, tanggal_mulai_tugas, status, NIK, No_KK, url, tanggal_menjadi_guru, sertifikasi, nip];
 
   // Hapus password dari array jika tidak diberikan
   if (!password) {
@@ -2760,6 +2759,27 @@ app.get('/filterraport/:nip', (req, res) => {
   });
 });
 
+app.get('/detail-rapor/:nisn', (req, res)=>{
+  const nisn = req.params.nisn;
+
+  const query = `
+    SELECT siswa.nisn, siswa.nama, kelas.nama_kelas
+    FROM siswa
+    JOIN kelas ON siswa.id_kelas = kelas.id_kelas
+    WHERE siswa.nisn = ?
+  `;
+
+  db.query(query, [nisn], (err,results) => {
+    if(err) {
+      console.error('Error executing query:', err);
+      res.status(500).send('Internal server error');
+      return;
+    }
+
+    res.json(results[0])
+  })
+})
+
 app.get('/raport/:nisn', (req, res) => {
   const nisn = req.params.nisn;
   const { semester, no_kelas } = req.query;
@@ -2774,14 +2794,14 @@ app.get('/raport/:nisn', (req, res) => {
     return res.status(400).json({ message: 'Kelas is required' });
   }
 
-  const query = `
+  const queryStudentData = `
     SELECT 
-        mp.nama AS nama_matapelajaran,
-        MAX(n.capaian_kompetensi) AS capaian_kompetensi,
-        COALESCE(MAX(uts.nilai), 0) AS UTS,
-        COALESCE(MAX(uas.nilai), 0) AS UAS,
-        COALESCE(MAX(uha.nilai), 0) AS UHA,
-        COALESCE(MAX(th.nilai), 0) AS TH
+      mp.nama AS nama_matapelajaran,
+      MAX(n.capaian_kompetensi) AS capaian_kompetensi,
+      COALESCE(MAX(uts.nilai), 0) AS UTS,
+      COALESCE(MAX(uas.nilai), 0) AS UAS,
+      COALESCE(MAX(uha.nilai), 0) AS UHA,
+      COALESCE(MAX(th.nilai), 0) AS TH
     FROM siswa s
     JOIN roster r ON s.id_kelas = r.id_kelas
     JOIN matapelajaran mp ON r.id_matapelajaran = mp.id_matapelajaran
@@ -2795,7 +2815,15 @@ app.get('/raport/:nisn', (req, res) => {
     GROUP BY mp.nama
   `;
 
-  db.query(query, [semester, semester, semester, semester, nisn, kelasInt, semester], (err, nilaiRows) => {
+  const queryClassData = `
+    SELECT k.*, s.*, ta.*
+    FROM siswa s
+    JOIN kelas k ON s.id_kelas = k.id_kelas
+    LEFT JOIN tahun_ajaran ta ON k.id_tahunajaran = ta.id_tahunajaran 
+    WHERE s.nisn = ?
+  `;
+
+  db.query(queryStudentData, [semester, semester, semester, semester, nisn, kelasInt, semester], (err, nilaiRows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -2847,12 +2875,32 @@ app.get('/raport/:nisn', (req, res) => {
       }
     }
 
-    res.json(uniqueRows);
+    // Fetch class data
+    db.query(queryClassData, [nisn], (classErr, classRows) => {
+      if (classErr) {
+        return res.status(500).json({ error: classErr.message });
+      }
+
+      if (classRows.length === 0) {
+        return res.json({ message: 'No available class data' });
+      }
+
+      const classData = classRows[0];
+
+      // Combine student data with class data
+      const responseData = {
+        studentData: uniqueRows,
+        classData: classData,
+      };
+
+      res.json(responseData);
+    });
   });
 });
 
 
-app.get('/rapor/:nisn', (req,res) => {
+
+app.get('/rapor/:nisn', (req, res) => {
   const nisn = req.params.nisn;
   const { semester, no_kelas } = req.query;
 
@@ -2868,32 +2916,32 @@ app.get('/rapor/:nisn', (req,res) => {
 
   const query = `
   SELECT
-    so.id_sosial,
-    so.sabar,
-    so.jujur,
-    so.amanah,
-    so.tawakkal,
-    so.empati,
-    so.disiplin,
-    so.kerjasama,
-    so.nilai_konklusi AS nilai_sosial,
-    so.deskripsi AS deskripsi_sosial,
-    sp.id_spiritual,
-    sp.sholat_fardhu,
-    sp.sholat_dhuha,
-    sp.sholat_tahajud,
-    sp.sunnah_rawatib,
-    sp.tilawah_quran,
-    sp.shaum_sunnah,
-    sp.shodaqoh,
-    sp.nilai_konklusi AS nilai_spiritual,
-    sp.deskripsi AS deskripsi_spiritual,
+    COALESCE(so.id_sosial, 0) AS id_sosial,
+    COALESCE(so.sabar, 0) AS sabar,
+    COALESCE(so.jujur, 0) AS jujur,
+    COALESCE(so.amanah, 0) AS amanah,
+    COALESCE(so.tawakkal, 0) AS tawakkal,
+    COALESCE(so.empati, 0) AS empati,
+    COALESCE(so.disiplin, 0) AS disiplin,
+    COALESCE(so.kerjasama, 0) AS kerjasama,
+    COALESCE(so.nilai_konklusi, 0) AS nilai_sosial,
+    COALESCE(so.deskripsi, '') AS deskripsi_sosial,
+    COALESCE(sp.id_spiritual, 0) AS id_spiritual,
+    COALESCE(sp.sholat_fardhu, 0) AS sholat_fardhu,
+    COALESCE(sp.sholat_dhuha, 0) AS sholat_dhuha,
+    COALESCE(sp.sholat_tahajud, 0) AS sholat_tahajud,
+    COALESCE(sp.sunnah_rawatib, 0) AS sunnah_rawatib,
+    COALESCE(sp.tilawah_quran, 0) AS tilawah_quran,
+    COALESCE(sp.shaum_sunnah, 0) AS shaum_sunnah,
+    COALESCE(sp.shodaqoh, 0) AS shodaqoh,
+    COALESCE(sp.nilai_konklusi, 0) AS nilai_spiritual,
+    COALESCE(sp.deskripsi, '') AS deskripsi_spiritual,
     COALESCE(SUM(CASE WHEN a.status = 'hadir' THEN 1 ELSE 0 END), 0) AS hadir,
     COALESCE(SUM(CASE WHEN a.status = 'sakit' THEN 1 ELSE 0 END), 0) AS sakit,
     COALESCE(SUM(CASE WHEN a.status = 'absen' THEN 1 ELSE 0 END), 0) AS absen
   FROM absensi a
-  JOIN sikap_sosial so ON a.nisn = so.nisn
-  LEFT JOIN sikap_spiritual sp ON a.nisn = sp.nisn
+  LEFT JOIN sikap_sosial so ON a.nisn = so.nisn AND a.no_kelas = so.no_kelas AND a.semester = so.semester
+  LEFT JOIN sikap_spiritual sp ON a.nisn = sp.nisn AND a.no_kelas = sp.no_kelas AND a.semester = sp.semester
   WHERE a.nisn = ? AND a.no_kelas = ? AND a.semester = ?
   GROUP BY
       so.id_sosial,
@@ -2917,7 +2965,7 @@ app.get('/rapor/:nisn', (req,res) => {
       sp.nilai_konklusi,
       sp.deskripsi
   `
-  db.query(query, [nisn, kelasInt, semester], (err,results) => {
+  db.query(query, [nisn, kelasInt, semester], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -2931,7 +2979,8 @@ app.get('/rapor/:nisn', (req,res) => {
 });
 
 
-app.get('/rapor-hafalan/:nisn', (req,res) => {
+
+app.get('/rapor-hafalan/:nisn', (req, res) => {
   const nisn = req.params.nisn;
   const { semester, no_kelas } = req.query;
 
@@ -2947,17 +2996,17 @@ app.get('/rapor-hafalan/:nisn', (req,res) => {
 
   const query = `
   SELECT 
-    h.* , 
-    r.catatan_guru
+    h.* ,
+    COALESCE(r.catatan_guru, '') as catatan_guru
   FROM hafalan h
-  JOIN rapor r ON h.nisn = r.nisn
+  LEFT JOIN rapor r ON h.nisn = r.nisn AND h.no_kelas = r.no_kelas AND h.semester = r.semester
   WHERE h.nisn = ? AND h.no_kelas = ? AND h.semester = ?
   ORDER BY
       h.bulan DESC,
       h.minggu DESC
   LIMIT 1
   `
-  db.query(query, [nisn, kelasInt, semester], (err,results) => {
+  db.query(query, [nisn, kelasInt, semester], (err, results) => {
     console.log(results);
     if (err) {
       return res.status(500).json({ error: err.message });
@@ -2968,7 +3017,7 @@ app.get('/rapor-hafalan/:nisn', (req,res) => {
     }
 
     res.json(results[0])
-  });
+  });
 });
 
 
