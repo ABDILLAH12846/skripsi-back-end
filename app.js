@@ -456,23 +456,29 @@ app.get('/siswa', (req, res) => {
 
 
 
-
-
-
-
-
 app.post('/siswa', (req, res) => {
-  const { nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, password, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url } = req.body;
+  const {
+    nisn, nama, NIPD, email, agama, kip, nama_kip, no_rek, jenis_kelamin, tempat_lahir, tanggal_lahir, berat_badan,
+    tinggi_badan, lingkar_kepala, kebutuhan_khusus, asal_sekolah, anak, alamat, no_telepon, password, No_KK, NIK,
+    status, terdaftar_sebagai, tanggal_masuk, tinggal_kelas, url, ijazah, akta, kartu_keluarga
+  } = req.body;
 
-  // Enkripsi password
   const encryptedPassword = encryptPassword(password);
 
   const sql = `
-    INSERT INTO siswa (nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, password, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO siswa (nisn, nama, NIPD, email, agama, kip, nama_kip, no_rek, jenis_kelamin, tempat_lahir, tanggal_lahir, berat_badan,
+      tinggi_badan, lingkar_kepala, kebutuhan_khusus, asal_sekolah, anak, alamat, no_telepon, password, No_KK, NIK,
+      status, terdaftar_sebagai, tanggal_masuk, tinggal_kelas, url, ijazah, akta, kartu_keluarga)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
-  
-  db.query(sql, [nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, encryptedPassword, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url], (err, results) => {
+
+  const queryParams = [
+    nisn, nama, NIPD, email, agama, kip, nama_kip, no_rek, jenis_kelamin, tempat_lahir, tanggal_lahir, berat_badan,
+    tinggi_badan, lingkar_kepala, kebutuhan_khusus, asal_sekolah, anak, alamat, no_telepon, encryptedPassword, No_KK, NIK,
+    status, terdaftar_sebagai, tanggal_masuk, tinggal_kelas, url, ijazah, akta, kartu_keluarga
+  ];
+
+  db.query(sql, queryParams, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -482,27 +488,31 @@ app.post('/siswa', (req, res) => {
 
 app.put('/siswa/:nisn', (req, res) => {
   const { nisn } = req.params;
-  const { nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password, id_wali, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url } = req.body;
+  const {
+    nama, NIPD, email, agama, kip, nama_kip, no_rek, jenis_kelamin, tempat_lahir, tanggal_lahir, berat_badan,
+    tinggi_badan, lingkar_kepala, kebutuhan_khusus, asal_sekolah, anak, alamat, no_telepon, password, No_KK, NIK,
+    status, terdaftar_sebagai, tanggal_masuk, tinggal_kelas, url, ijazah, akta, kartu_keluarga, valid
+  } = req.body;
 
-  // Enkripsi password jika ada
   const encryptedPassword = password ? encryptPassword(password) : null;
 
   const sql = `
     UPDATE siswa
-    SET nama = ?, NIPD = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, id_kelas = ?, password = ?, id_wali = ?, id_ayah = ?, id_ibu = ?, No_KK = ?, NIK = ?, status = ?, terdaftar_sebagai = ?, tanggal_masuk = ?, valid = ?, url = ?
+    SET nama = ?, NIPD = ?, email = ?, agama = ?, kip = ?, nama_kip = ?, no_rek = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, berat_badan = ?,
+        tinggi_badan = ?, lingkar_kepala = ?, kebutuhan_khusus = ?, asal_sekolah = ?, anak = ?, alamat = ?, no_telepon = ?, password = ?,
+        No_KK = ?, NIK = ?, status = ?, terdaftar_sebagai = ?, tanggal_masuk = ?, tinggal_kelas = ?, url = ?, ijazah = ?, akta = ?, kartu_keluarga = ?
     WHERE nisn = ?
   `;
 
-  // Buat array parameter query sesuai dengan apakah password disertakan atau tidak
   const queryParams = [
-    nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas,
-    password ? encryptedPassword : null, // jika password tidak diberikan, gunakan null
-    id_wali, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url, nisn
+    nama, NIPD, email, agama, kip, nama_kip, no_rek, jenis_kelamin, tempat_lahir, tanggal_lahir, berat_badan,
+    tinggi_badan, lingkar_kepala, kebutuhan_khusus, asal_sekolah, anak, alamat, no_telepon, 
+    encryptedPassword ? encryptedPassword : null, No_KK, NIK, status, terdaftar_sebagai,
+    tanggal_masuk, tinggal_kelas, url, ijazah, akta, kartu_keluarga, nisn
   ];
 
-  // Hapus parameter password dari array jika tidak diberikan
   if (!password) {
-    queryParams.splice(9, 1); // Sesuaikan indeks berdasarkan posisi password
+    queryParams.splice(18, 1); // Hapus parameter password dari array jika tidak diberikan
   }
 
   db.query(sql, queryParams, (err, results) => {
@@ -515,7 +525,6 @@ app.put('/siswa/:nisn', (req, res) => {
     res.json({ message: 'Data siswa berhasil diperbarui' });
   });
 });
-
 
 
 
@@ -545,22 +554,7 @@ app.get('/siswa/:nisn', (req, res) => {
   const { nisn } = req.params;
   const sql = `
     SELECT 
-        siswa.nisn,
-        siswa.nama,
-        siswa.NIPD,
-        siswa.email,
-        siswa.jenis_kelamin,
-        siswa.tempat_lahir,
-        siswa.tanggal_lahir,
-        siswa.alamat,
-        siswa.no_telepon,
-        siswa.password,
-        siswa.No_KK,
-        siswa.NIK,
-        siswa.status,
-        siswa.tanggal_masuk,
-        siswa.terdaftar_sebagai,
-        siswa.url,
+        siswa.*,
         wali.nama AS wali_nama,
         wali.alamat AS wali_alamat,
         wali.no_telepon AS wali_no_telepon,
@@ -580,7 +574,7 @@ app.get('/siswa/:nisn', (req, res) => {
         ibu.pekerjaan AS ibu_pekerjaan,
         ibu.gaji AS ibu_gaji,
         CONCAT(kelas.no_kelas, ' ', kelas.nama_kelas) AS kelas,
-        kelas.tahun_ajaran AS tahun_ajaran
+        CONCAT(tahun_ajaran.tahun_awal, '/', tahun_ajaran.tahun_akhir) AS tahun_ajaran
     FROM 
         siswa
     LEFT JOIN 
@@ -591,6 +585,8 @@ app.get('/siswa/:nisn', (req, res) => {
         orangtua AS ibu ON siswa.id_ibu = ibu.id_orangtua
     LEFT JOIN
         kelas ON siswa.id_kelas = kelas.id_kelas
+    LEFT JOIN
+        tahun_ajaran ON kelas.id_tahunajaran = tahun_ajaran.id_tahunajaran
     WHERE siswa.nisn = ?;
   `;
   
@@ -641,15 +637,28 @@ app.get('/siswa/:nisn', (req, res) => {
       NIK: siswa.NIK,
       status: siswa.status,
       tanggal_masuk: siswa.tanggal_masuk,
-      valid: siswa.valid,
       terdaftar_sebagai: siswa.terdaftar_sebagai,
       orangtua: orangtua,
       kelas: siswa.kelas,
       tahun_ajaran: siswa.tahun_ajaran,
       url: siswa.url,
+      agama: siswa.agama,
+      kip: siswa.kip,
+      nama_kip: siswa.kip,
+      no_rek: siswa.no_rek,
+      berat_badan: siswa.berat_badan,
+      tinggi_badan: siswa.tinggi_badan,
+      lingkar_kepala: siswa.lingkar_kepala,
+      kebutuhan_khusus: siswa.kebutuhan_khusus,
+      asal_sekolah: siswa.asal_sekolah,
+      anak: siswa.anak,
+      ijazah: siswa.ijazah,
+      akta: siswa.akta,
+      kartu_keluarga: siswa.kartu_keluarga
     });
   });
 });
+
 
 
 
@@ -1149,6 +1158,35 @@ app.put('/kelas/:id_kelas/no_tahun', (req, res) => {
   `;
 
   db.query(updateSql, [no_kelas, tahun_ajaran, id_kelas], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ error: 'Data kelas tidak ditemukan' });
+    }
+    
+    res.status(200).json({ message: 'Nomor kelas dan tahun ajaran berhasil diperbarui' });
+  });
+});
+
+app.put('/kelas/:id_kelas/tingkatan', (req, res) => {
+  const { id_kelas } = req.params;
+  const { tingkatan } = req.body;
+
+  // Validasi data input
+  if (!tingkatan) {
+    return res.status(400).json({ error: 'Kolom nomor kelas dan tahun ajaran wajib diisi' });
+  }
+
+  // SQL query untuk memperbarui nomor kelas dan tahun ajaran
+  const updateSql = `
+    UPDATE kelas
+    SET tingkatan = ?, no_kelas = ?
+    WHERE id_kelas = ?
+  `;
+
+  db.query(updateSql, [tingkatan.id_tingkatan, tingkatan.nomor, id_kelas], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -2720,6 +2758,7 @@ app.get('/filterraport/:nip', (req, res) => {
     res.json(results);
   });
 });
+
 app.get('/detail-rapor/:nisn', (req, res)=>{
   const nisn = req.params.nisn;
 
@@ -2755,7 +2794,7 @@ app.get('/raport/:nisn', (req, res) => {
     return res.status(400).json({ message: 'Kelas is required' });
   }
 
-  const query = `
+  const queryStudentData = `
     SELECT 
       mp.nama AS nama_matapelajaran,
       MAX(n.capaian_kompetensi) AS capaian_kompetensi,
@@ -2776,7 +2815,15 @@ app.get('/raport/:nisn', (req, res) => {
     GROUP BY mp.nama
   `;
 
-  db.query(query, [semester, semester, semester, semester, nisn, kelasInt, semester], (err, nilaiRows) => {
+  const queryClassData = `
+    SELECT k.*, s.*, ta.*
+    FROM siswa s
+    JOIN kelas k ON s.id_kelas = k.id_kelas
+    LEFT JOIN tahun_ajaran ta ON k.id_tahunajaran = ta.id_tahunajaran 
+    WHERE s.nisn = ?
+  `;
+
+  db.query(queryStudentData, [semester, semester, semester, semester, nisn, kelasInt, semester], (err, nilaiRows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -2828,9 +2875,29 @@ app.get('/raport/:nisn', (req, res) => {
       }
     }
 
-    res.json(uniqueRows);
+    // Fetch class data
+    db.query(queryClassData, [nisn], (classErr, classRows) => {
+      if (classErr) {
+        return res.status(500).json({ error: classErr.message });
+      }
+
+      if (classRows.length === 0) {
+        return res.json({ message: 'No available class data' });
+      }
+
+      const classData = classRows[0];
+
+      // Combine student data with class data
+      const responseData = {
+        studentData: uniqueRows,
+        classData: classData,
+      };
+
+      res.json(responseData);
+    });
   });
 });
+
 
 
 app.get('/rapor/:nisn', (req, res) => {
@@ -3636,8 +3703,29 @@ app.get('/sosial/:id_sosial', (req, res) => {
 });
 
 app.get('/matapelajaran', (req, res) => {
-  const query = 'SELECT * FROM matapelajaran';
-  db.query(query, (err, results) => {
+  const { id_tingkatan } = req.query;
+
+  let query = `
+    SELECT 
+      mp.id_matapelajaran,
+      mp.nama,
+      mp.id_tingkatan,
+      t.nomor AS nomor_tingkatan,
+      k.nama_kurikulum
+    FROM 
+      matapelajaran mp
+    LEFT JOIN 
+      tingkatan t ON mp.id_tingkatan = t.id_tingkatan
+    LEFT JOIN 
+      kurikulum k ON t.id_kurikulum = k.id_kurikulum
+  `;
+
+  // Add WHERE clause if id_tingkatan is provided
+  if (id_tingkatan) {
+    query += ` WHERE mp.id_tingkatan = ?`;
+  }
+
+  db.query(query, [id_tingkatan], (err, results) => {
       if (err) {
           console.error('Error fetching data:', err);
           res.status(500).send('Error fetching data');
@@ -3646,6 +3734,8 @@ app.get('/matapelajaran', (req, res) => {
       res.json(results);
   });
 });
+
+
 
 app.get('/matapelajaran/:id', (req, res) => {
   const { id } = req.params;
