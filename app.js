@@ -457,23 +457,29 @@ app.get('/siswa', (req, res) => {
 
 
 
-
-
-
-
-
 app.post('/siswa', (req, res) => {
-  const { nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, password, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url } = req.body;
+  const {
+    nisn, nama, NIPD, email, agama, kip, nama_kip, no_rek, jenis_kelamin, tempat_lahir, tanggal_lahir, berat_badan,
+    tinggi_badan, lingkar_kepala, kebutuhan_khusus, asal_sekolah, anak, alamat, no_telepon, password, No_KK, NIK,
+    status, terdaftar_sebagai, tanggal_masuk, tinggal_kelas, url, ijazah, akta, kartu_keluarga
+  } = req.body;
 
-  // Enkripsi password
   const encryptedPassword = encryptPassword(password);
 
   const sql = `
-    INSERT INTO siswa (nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, password, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO siswa (nisn, nama, NIPD, email, agama, kip, nama_kip, no_rek, jenis_kelamin, tempat_lahir, tanggal_lahir, berat_badan,
+      tinggi_badan, lingkar_kepala, kebutuhan_khusus, asal_sekolah, anak, alamat, no_telepon, password, No_KK, NIK,
+      status, terdaftar_sebagai, tanggal_masuk, tinggal_kelas, url, ijazah, akta, kartu_keluarga)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
-  
-  db.query(sql, [nisn, nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, id_wali, encryptedPassword, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url], (err, results) => {
+
+  const queryParams = [
+    nisn, nama, NIPD, email, agama, kip, nama_kip, no_rek, jenis_kelamin, tempat_lahir, tanggal_lahir, berat_badan,
+    tinggi_badan, lingkar_kepala, kebutuhan_khusus, asal_sekolah, anak, alamat, no_telepon, encryptedPassword, No_KK, NIK,
+    status, terdaftar_sebagai, tanggal_masuk, tinggal_kelas, url, ijazah, akta, kartu_keluarga
+  ];
+
+  db.query(sql, queryParams, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -483,27 +489,31 @@ app.post('/siswa', (req, res) => {
 
 app.put('/siswa/:nisn', (req, res) => {
   const { nisn } = req.params;
-  const { nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas, password, id_wali, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url } = req.body;
+  const {
+    nama, NIPD, email, agama, kip, nama_kip, no_rek, jenis_kelamin, tempat_lahir, tanggal_lahir, berat_badan,
+    tinggi_badan, lingkar_kepala, kebutuhan_khusus, asal_sekolah, anak, alamat, no_telepon, password, No_KK, NIK,
+    status, terdaftar_sebagai, tanggal_masuk, tinggal_kelas, url, ijazah, akta, kartu_keluarga, valid
+  } = req.body;
 
-  // Enkripsi password jika ada
   const encryptedPassword = password ? encryptPassword(password) : null;
 
   const sql = `
     UPDATE siswa
-    SET nama = ?, NIPD = ?, email = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, alamat = ?, no_telepon = ?, id_kelas = ?, password = ?, id_wali = ?, id_ayah = ?, id_ibu = ?, No_KK = ?, NIK = ?, status = ?, terdaftar_sebagai = ?, tanggal_masuk = ?, valid = ?, url = ?
+    SET nama = ?, NIPD = ?, email = ?, agama = ?, kip = ?, nama_kip = ?, no_rek = ?, jenis_kelamin = ?, tempat_lahir = ?, tanggal_lahir = ?, berat_badan = ?,
+        tinggi_badan = ?, lingkar_kepala = ?, kebutuhan_khusus = ?, asal_sekolah = ?, anak = ?, alamat = ?, no_telepon = ?, password = ?,
+        No_KK = ?, NIK = ?, status = ?, terdaftar_sebagai = ?, tanggal_masuk = ?, tinggal_kelas = ?, url = ?, ijazah = ?, akta = ?, kartu_keluarga = ?
     WHERE nisn = ?
   `;
 
-  // Buat array parameter query sesuai dengan apakah password disertakan atau tidak
   const queryParams = [
-    nama, NIPD, email, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat, no_telepon, id_kelas,
-    password ? encryptedPassword : null, // jika password tidak diberikan, gunakan null
-    id_wali, id_ayah, id_ibu, No_KK, NIK, status, terdaftar_sebagai, tanggal_masuk, valid, url, nisn
+    nama, NIPD, email, agama, kip, nama_kip, no_rek, jenis_kelamin, tempat_lahir, tanggal_lahir, berat_badan,
+    tinggi_badan, lingkar_kepala, kebutuhan_khusus, asal_sekolah, anak, alamat, no_telepon, 
+    encryptedPassword ? encryptedPassword : null, No_KK, NIK, status, terdaftar_sebagai,
+    tanggal_masuk, tinggal_kelas, url, ijazah, akta, kartu_keluarga, nisn
   ];
 
-  // Hapus parameter password dari array jika tidak diberikan
   if (!password) {
-    queryParams.splice(9, 1); // Sesuaikan indeks berdasarkan posisi password
+    queryParams.splice(18, 1); // Hapus parameter password dari array jika tidak diberikan
   }
 
   db.query(sql, queryParams, (err, results) => {
@@ -516,7 +526,6 @@ app.put('/siswa/:nisn', (req, res) => {
     res.json({ message: 'Data siswa berhasil diperbarui' });
   });
 });
-
 
 
 
@@ -546,23 +555,7 @@ app.get('/siswa/:nisn', (req, res) => {
   const { nisn } = req.params;
   const sql = `
     SELECT 
-        siswa.nisn,
-        siswa.nama,
-        siswa.NIPD,
-        siswa.email,
-        siswa.jenis_kelamin,
-        siswa.tempat_lahir,
-        siswa.tanggal_lahir,
-        siswa.alamat,
-        siswa.no_telepon,
-        siswa.password,
-        siswa.No_KK,
-        siswa.NIK,
-        siswa.status,
-        siswa.tanggal_masuk,
-        siswa.valid,
-        siswa.terdaftar_sebagai,
-        siswa.url,
+        siswa.*,
         wali.nama AS wali_nama,
         wali.alamat AS wali_alamat,
         wali.no_telepon AS wali_no_telepon,
@@ -645,12 +638,24 @@ app.get('/siswa/:nisn', (req, res) => {
       NIK: siswa.NIK,
       status: siswa.status,
       tanggal_masuk: siswa.tanggal_masuk,
-      valid: siswa.valid,
       terdaftar_sebagai: siswa.terdaftar_sebagai,
       orangtua: orangtua,
       kelas: siswa.kelas,
       tahun_ajaran: siswa.tahun_ajaran,
       url: siswa.url,
+      agama: siswa.agama,
+      kip: siswa.kip,
+      nama_kip: siswa.kip,
+      no_rek: siswa.no_rek,
+      berat_badan: siswa.berat_badan,
+      tinggi_badan: siswa.tinggi_badan,
+      lingkar_kepala: siswa.lingkar_kepala,
+      kebutuhan_khusus: siswa.kebutuhan_khusus,
+      asal_sekolah: siswa.asal_sekolah,
+      anak: siswa.anak,
+      ijazah: siswa.ijazah,
+      akta: siswa.akta,
+      kartu_keluarga: siswa.kartu_keluarga
     });
   });
 });
