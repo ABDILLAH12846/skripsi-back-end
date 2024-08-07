@@ -3101,7 +3101,7 @@ app.get('/siswa/absensi/:nisn', (req, res) => {
     a.tanggal,
     a.status,
     a.no_kelas,
-    k.tahun_ajaran 
+    YEAR(s.tanggal_masuk) as year
   FROM 
     siswa s
   JOIN 
@@ -3123,7 +3123,7 @@ app.get('/siswa/absensi/:nisn', (req, res) => {
       tanggal: new Date(record.tanggal).toISOString().split('T')[0],
       status: record.status,
       no_kelas: record.no_kelas,
-      tahun_ajaran: record.tahun_ajaran,
+      year: record.year,
     }));
 
     res.json(formattedResults);
