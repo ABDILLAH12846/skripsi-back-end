@@ -1471,13 +1471,57 @@ app.delete('/mata-pelajaran/:id', (req, res) => {
   });
 });
 
+// app.get('/absensi/:nip', (req, res) => {
+//   const { nip } = req.params;
+
+//   const sql = `
+//     SELECT 
+//         siswa.nama AS nama,
+//         siswa.nisn AS nisn,
+//         COALESCE(SUM(CASE WHEN absensi.status = 'sakit' THEN 1 ELSE 0 END), 0) AS sakit,
+//         COALESCE(SUM(CASE WHEN absensi.status = 'absen' THEN 1 ELSE 0 END), 0) AS absen,
+//         COALESCE(SUM(CASE WHEN absensi.status = 'hadir' THEN 1 ELSE 0 END), 0) AS hadir
+//     FROM 
+//         kelas
+//     JOIN 
+//         siswa ON kelas.id_kelas = siswa.id_kelas
+//     LEFT JOIN 
+//         absensi ON siswa.nisn = absensi.nisn
+//     WHERE 
+//         kelas.nip = ?
+//     GROUP BY 
+//         siswa.nisn, siswa.nama;
+//   `;
+
+//   db.query(sql, [nip], (err, results) => {
+//     if (err) {
+//       return res.status(500).json({ error: err.message });
+//     }
+
+//     // Format hasil query ke dalam struktur yang diinginkan
+//     const formattedResults = results.map(result => ({
+//       nama: result.nama,
+//       nisn: result.nisn,
+//       absensi: {
+//         sakit: result.sakit,
+//         absen: result.absen,
+//         hadir: result.hadir
+//       }
+//     }));
+
+//     res.json(formattedResults);
+//   });
+// });
+
 app.get('/absensi/:nip', (req, res) => {
   const { nip } = req.params;
+  const { semester, id_tahunajaran } = req.query;
 
-  const sql = `
+  let sql = `
     SELECT 
         siswa.nama AS nama,
         siswa.nisn AS nisn,
+        semester.id_semester AS id_semester,
         COALESCE(SUM(CASE WHEN absensi.status = 'sakit' THEN 1 ELSE 0 END), 0) AS sakit,
         COALESCE(SUM(CASE WHEN absensi.status = 'absen' THEN 1 ELSE 0 END), 0) AS absen,
         COALESCE(SUM(CASE WHEN absensi.status = 'hadir' THEN 1 ELSE 0 END), 0) AS hadir
@@ -1485,15 +1529,33 @@ app.get('/absensi/:nip', (req, res) => {
         kelas
     JOIN 
         siswa ON kelas.id_kelas = siswa.id_kelas
+    JOIN 
+        semester ON siswa.nisn = semester.nisn
     LEFT JOIN 
-        absensi ON siswa.nisn = absensi.nisn
+        absensi ON semester.id_semester = absensi.id_semester
     WHERE 
         kelas.nip = ?
+  `;
+  
+  const params = [nip];
+
+  if (semester && id_tahunajaran) {
+    sql += ` AND semester.semester = ? AND semester.id_tahunajaran = ?`;
+    params.push(semester, id_tahunajaran);
+  } else if (semester) {
+    sql += ` AND semester.semester = ?`;
+    params.push(semester);
+  } else if (id_tahunajaran) {
+    sql += ` AND semester.id_tahunajaran = ?`;
+    params.push(id_tahunajaran);
+  }
+
+  sql += `
     GROUP BY 
-        siswa.nisn, siswa.nama;
+        siswa.nisn, siswa.nama, semester.id_semester;
   `;
 
-  db.query(sql, [nip], (err, results) => {
+  db.query(sql, params, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -1502,6 +1564,7 @@ app.get('/absensi/:nip', (req, res) => {
     const formattedResults = results.map(result => ({
       nama: result.nama,
       nisn: result.nisn,
+      id_semester: result.id_semester,
       absensi: {
         sakit: result.sakit,
         absen: result.absen,
@@ -1513,28 +1576,52 @@ app.get('/absensi/:nip', (req, res) => {
   });
 });
 
+
+
 app.get('/absensi/:nip/:tanggal', (req, res) => {
   const { nip, tanggal } = req.params;
+  const { semester, id_tahunajaran } = req.query;
 
-  const sql = `
+  let sql = `
     SELECT 
         absensi.id_absensi,
         siswa.nisn,
         siswa.nama,
         kelas.no_kelas,
+        semester.id_semester,
         COALESCE(absensi.tanggal, ?) AS tanggal,
         COALESCE(absensi.status, 'hadir') AS status
     FROM 
         siswa
     JOIN 
         kelas ON siswa.id_kelas = kelas.id_kelas
+    JOIN 
+        semester ON siswa.nisn = semester.nisn
     LEFT JOIN 
-        absensi ON siswa.nisn = absensi.nisn AND absensi.tanggal = ?
+        absensi ON semester.id_semester = absensi.id_semester AND absensi.tanggal = ?
     WHERE 
-        kelas.nip = ?;
+        kelas.nip = ?
+  `;
+  
+  const params = [tanggal, tanggal, nip];
+
+  if (semester && id_tahunajaran) {
+    sql += ` AND semester.semester = ? AND semester.id_tahunajaran = ?`;
+    params.push(semester, id_tahunajaran);
+  } else if (semester) {
+    sql += ` AND semester.semester = ?`;
+    params.push(semester);
+  } else if (id_tahunajaran) {
+    sql += ` AND semester.id_tahunajaran = ?`;
+    params.push(id_tahunajaran);
+  }
+
+  sql += `
+    GROUP BY 
+        siswa.nisn, siswa.nama, kelas.no_kelas, absensi.id_absensi, semester.id_semester, absensi.tanggal, absensi.status;
   `;
 
-  db.query(sql, [tanggal, tanggal, nip], (err, results) => {
+  db.query(sql, params, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -1543,10 +1630,45 @@ app.get('/absensi/:nip/:tanggal', (req, res) => {
   });
 });
 
+
+
+// app.post('/absensi', (req, res) => {
+//   const { attendanceData } = req.body;
+
+//   console.log({attendanceData})
+
+//   if (!Array.isArray(attendanceData) || attendanceData.length === 0) {
+//     return res.status(400).json({ error: 'Invalid or empty attendance data array' });
+//   }
+
+//   const values = attendanceData.map(item => [
+//     item.id_absensi,
+//     item.tanggal,
+//     item.status,
+//     item.deskripsi,
+//     item.nisn,
+//     item.no_kelas
+//   ]);
+
+//   const sql = `
+//     INSERT INTO absensi (id_absensi, tanggal, status, deskripsi, nisn, no_kelas)
+//     VALUES ?
+//   `;
+
+//   db.query(sql, [values], (err, result) => {
+//     if (err) {
+//       console.error('Error executing SQL query: ', err);
+//       return res.status(500).json({ error: 'Failed to add multiple attendance records' });
+//     }
+
+//     res.status(201).json({ message: 'Multiple attendance records added successfully' });
+//   });
+// });
+
 app.post('/absensi', (req, res) => {
   const { attendanceData } = req.body;
 
-  console.log({attendanceData})
+  console.log({ attendanceData });
 
   if (!Array.isArray(attendanceData) || attendanceData.length === 0) {
     return res.status(400).json({ error: 'Invalid or empty attendance data array' });
@@ -1557,12 +1679,12 @@ app.post('/absensi', (req, res) => {
     item.tanggal,
     item.status,
     item.deskripsi,
-    item.nisn,
+    item.id_semester,  // Ganti nisn dengan id_semester
     item.no_kelas
   ]);
 
   const sql = `
-    INSERT INTO absensi (id_absensi, tanggal, status, deskripsi, nisn, no_kelas)
+    INSERT INTO absensi (id_absensi, tanggal, status, deskripsi, id_semester, no_kelas)
     VALUES ?
   `;
 
@@ -1578,6 +1700,51 @@ app.post('/absensi', (req, res) => {
 
 
 // PUT Endpoint to update multiple attendance records (Optimized approach)
+// app.put('/absensi', (req, res) => {
+//   const { attendanceData } = req.body;
+
+//   if (!Array.isArray(attendanceData) || attendanceData.length === 0) {
+//     return res.status(400).json({ error: 'Invalid or empty attendance data array' });
+//   }
+
+//   const sql = `
+//     UPDATE absensi
+//     SET tanggal = ?,
+//         status = ?,
+//         deskripsi = ?,
+//         nisn = ?
+//     WHERE id_absensi = ?
+//   `;
+
+//   // Prepare an array of promises for each update operation
+//   const promises = attendanceData.map(item => {
+//     const { id_absensi, tanggal, status, deskripsi, nisn } = item;
+//     const values = [tanggal, status, deskripsi, nisn, id_absensi];
+
+//     return new Promise((resolve, reject) => {
+//       db.query(sql, values, (err, result) => {
+//         if (err) {
+//           console.error('Error executing SQL query: ', err);
+//           reject(err);
+//           return;
+//         }
+//         resolve(result);
+//       });
+//     });
+//   });
+
+//   // Execute all promises in parallel
+//   Promise.all(promises)
+//     .then(results => {
+//       const affectedRows = results.reduce((total, result) => total + result.affectedRows, 0);
+//       res.json({ message: `${affectedRows} attendance records updated successfully` });
+//     })
+//     .catch(err => {
+//       console.error('Error updating attendance records:', err);
+//       res.status(500).json({ error: 'Failed to update attendance records' });
+//     });
+// });
+
 app.put('/absensi', (req, res) => {
   const { attendanceData } = req.body;
 
@@ -1590,14 +1757,14 @@ app.put('/absensi', (req, res) => {
     SET tanggal = ?,
         status = ?,
         deskripsi = ?,
-        nisn = ?
+        id_semester = ?  -- Ganti nisn dengan id_semester
     WHERE id_absensi = ?
   `;
 
-  // Prepare an array of promises for each update operation
+  // Membuat array promises untuk setiap operasi update
   const promises = attendanceData.map(item => {
-    const { id_absensi, tanggal, status, deskripsi, nisn } = item;
-    const values = [tanggal, status, deskripsi, nisn, id_absensi];
+    const { id_absensi, tanggal, status, deskripsi, id_semester } = item;  // Ganti nisn dengan id_semester
+    const values = [tanggal, status, deskripsi, id_semester, id_absensi];  // Sesuaikan urutan values
 
     return new Promise((resolve, reject) => {
       db.query(sql, values, (err, result) => {
@@ -1611,7 +1778,7 @@ app.put('/absensi', (req, res) => {
     });
   });
 
-  // Execute all promises in parallel
+  // Eksekusi semua promises secara paralel
   Promise.all(promises)
     .then(results => {
       const affectedRows = results.reduce((total, result) => total + result.affectedRows, 0);
@@ -1622,6 +1789,7 @@ app.put('/absensi', (req, res) => {
       res.status(500).json({ error: 'Failed to update attendance records' });
     });
 });
+
 
 app.get('/data', (req, res) => {
   const sql = `
@@ -4199,6 +4367,132 @@ app.delete('/kurikulum/:id', (req, res) => {
   });
 });
 
+// Generate semester data for all students
+app.post('/generate-semester', (req, res) => {
+  const { semester, id_tahunajaran } = req.body;
+  if (!semester || !id_tahunajaran) {
+    return res.status(400).json({ message: 'semester and id_tahunajaran are required' });
+  }
+
+  // Check for existing combination of semester and id_tahunajaran
+  const checkQuery = 'SELECT * FROM semester WHERE semester = ? AND id_tahunajaran = ?';
+  db.query(checkQuery, [semester, id_tahunajaran], (err, results) => {
+    if (err) throw err;
+
+    if (results.length > 0) {
+      return res.status(400).json({ message: 'Semester and id_tahunajaran combination already exists' });
+    }
+
+    // Fetch all students and their corresponding classes
+    const getStudentsQuery = `
+      SELECT s.nisn, s.id_kelas, k.no_kelas 
+      FROM siswa s 
+      JOIN kelas k ON s.id_kelas = k.id_kelas
+    `;
+    db.query(getStudentsQuery, (err, students) => {
+      if (err) throw err;
+
+      if (students.length === 0) {
+        return res.status(404).json({ message: 'No students found' });
+      }
+
+      // Prepare insert query
+      const insertQuery = 'INSERT INTO semester (semester, nisn, no_kelas, id_tahunajaran) VALUES ?';
+
+      const values = students.map(student => [
+        semester,
+        student.nisn,
+        student.no_kelas,
+        id_tahunajaran
+      ]);
+
+      // Insert semester data for all students
+      db.query(insertQuery, [values], (err, result) => {
+        if (err) throw err;
+        res.status(201).json({ message: 'Semester data generated for all students', affectedRows: result.affectedRows });
+      });
+    });
+  });
+});
+
+// Get all or filter by id_tahunajaran and semester
+app.get('/semester', (req, res) => {
+  const { id_tahunajaran, semester } = req.query;
+
+  let query = `
+    SELECT 
+      semester.id_semester, 
+      semester.semester, 
+      semester.nisn AS NISN, 
+      semester.no_kelas, 
+      semester.id_tahunajaran, 
+      siswa.nama AS Nama, 
+      CONCAT(tahun_ajaran.tahun_awal, '/', tahun_ajaran.tahun_akhir) AS "Tahun Ajaran" 
+    FROM 
+      semester
+    JOIN 
+      siswa ON semester.nisn = siswa.nisn
+    JOIN 
+      tahun_ajaran ON semester.id_tahunajaran = tahun_ajaran.id_tahunajaran
+  `;
+  const params = [];
+
+  if (id_tahunajaran && semester) {
+    query += ' WHERE semester.id_tahunajaran = ? AND semester.semester = ?';
+    params.push(id_tahunajaran, semester);
+  } else if (id_tahunajaran) {
+    query += ' WHERE semester.id_tahunajaran = ?';
+    params.push(id_tahunajaran);
+  } else if (semester) {
+    query += ' WHERE semester.semester = ?';
+    params.push(semester);
+  }
+
+  db.query(query, params, (err, results) => {
+    if (err) throw err;
+    res.json(results);
+  });
+});
+
+
+app.get('/semester/:id', (req, res) => {
+  const query = 'SELECT * FROM semester WHERE id_semester = ?';
+  db.query(query, [req.params.id], (err, result) => {
+    if (err) throw err;
+    if (result.length === 0) return res.status(404).json({ message: 'Record not found' });
+    res.json(result[0]);
+  });
+});
+
+app.post('/semester', (req, res) => {
+  const { semester, nisn, no_kelas, id_tahunajaran } = req.body;
+  const query = 'INSERT INTO semester (semester, nisn, no_kelas, id_tahunajaran) VALUES (?, ?, ?, ?)';
+
+  db.query(query, [semester, nisn, no_kelas, id_tahunajaran], (err, result) => {
+    if (err) throw err;
+    res.status(201).json({ id_semester: result.insertId, ...req.body });
+  });
+});
+
+app.put('/semester/:id', (req, res) => {
+  const { semester, nisn, no_kelas, id_tahunajaran } = req.body;
+  const query = 'UPDATE semester SET semester = ?, nisn = ?, no_kelas = ?, id_tahunajaran = ? WHERE id_semester = ?';
+
+  db.query(query, [semester, nisn, no_kelas, id_tahunajaran, req.params.id], (err, result) => {
+    if (err) throw err;
+    if (result.affectedRows === 0) return res.status(404).json({ message: 'Record not found' });
+    res.json({ id_semester: req.params.id, ...req.body });
+  });
+});
+
+app.delete('/semester/:id', (req, res) => {
+  const query = 'DELETE FROM semester WHERE id_semester = ?';
+  db.query(query, [req.params.id], (err, result) => {
+    if (err) throw err;
+    if (result.affectedRows === 0) return res.status(404).json({ message: 'Record not found' });
+    res.json({ message: 'Record deleted successfully' });
+  });
+});
 
 
 // Menjalankan server
