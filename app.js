@@ -23,11 +23,24 @@ const multerGoogleStorage = multer({
 }).single('photo');
 
 const db = mysql.createConnection({
-  host: '34.72.53.116', // Nama host dari database Anda
-  user: 'root',      // Nama pengguna dari database Anda
-  password: 'Zakyirhamna123',  // Kata sandi dari database Anda
+  host: 'database-1.chsks082850a.us-east-1.rds.amazonaws.com', // Nama host dari database Anda
+  user: 'admin',      // Nama pengguna dari database Anda
+  password: 'zakyirhamna',  // Kata sandi dari database Anda
   database: 'al-izzah' // Nama database Anda
 });
+// const db = mysql.createConnection({
+//   host: '35.192.154.48', // Nama host dari database Anda
+//   user: 'root',      // Nama pengguna dari database Anda
+//   password: 'zakyirhamna',  // Kata sandi dari database Anda
+//   database: 'al-izzah' // Nama database Anda
+// });
+
+// const db = mysql.createConnection({
+//   host: 'localhost',  // Nama host yang sama dengan XAMPP
+//   user: 'root',       // Nama pengguna default di XAMPP
+//   password: '',       // Kata sandi default di XAMPP biasanya kosong
+//   database: 'al-izzah' // Nama database yang sesuai
+// });
 
 db.connect((err) => {
   if (err) {
@@ -814,7 +827,6 @@ app.put('/walisiswa', (req, res) => {
     return new Promise((resolve, reject) => {
       if (!nisn.kelas) {
         // Set id_orangtua ke NULL jika id_orangtua adalah "null"
-        console.log("b aja")
         db.query(sqlSetNull, [nisn.nisn], (err, results) => {
           if (err) {
             reject(err);
@@ -2437,7 +2449,9 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
       hafalan.minggu,
       hafalan.id_hafalan,
       hafalan.hafalan,
-      hafalan.no_kelas
+      hafalan.no_kelas,
+      hafalan.keterangan,  -- Menambahkan keterangan
+      hafalan.status       -- Menambahkan status
     FROM 
       hafalan
     WHERE 
@@ -2463,10 +2477,10 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
         bulanEntry = {
           bulan: monthNames[parseInt(row.bulan) - 1] || "Unknown",
           minggu: [
-            { minggu: "1", id_hafalan: null, hafalan: "" },
-            { minggu: "2", id_hafalan: null, hafalan: "" },
-            { minggu: "3", id_hafalan: null, hafalan: "" },
-            { minggu: "4", id_hafalan: null, hafalan: "" }
+            { minggu: "1", id_hafalan: null, hafalan: "", keterangan: "", status: "" },
+            { minggu: "2", id_hafalan: null, hafalan: "", keterangan: "", status: "" },
+            { minggu: "3", id_hafalan: null, hafalan: "", keterangan: "", status: "" },
+            { minggu: "4", id_hafalan: null, hafalan: "", keterangan: "", status: "" }
           ]
         };
         formattedResults.push(bulanEntry);
@@ -2476,7 +2490,9 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
         bulanEntry.minggu[row.minggu - 1] = {
           minggu: row.minggu.toString(),
           id_hafalan: row.id_hafalan,
-          hafalan: row.hafalan || ""
+          hafalan: row.hafalan || "",
+          keterangan: row.keterangan || "",  // Menambahkan keterangan
+          status: row.status || ""            // Menambahkan status
         };
       }
     });
@@ -2486,10 +2502,10 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
       formattedResults.push({
         bulan: monthName,
         minggu: [
-          { minggu: "1", id_hafalan: null, hafalan: "" },
-          { minggu: "2", id_hafalan: null, hafalan: "" },
-          { minggu: "3", id_hafalan: null, hafalan: "" },
-          { minggu: "4", id_hafalan: null, hafalan: "" }
+          { minggu: "1", id_hafalan: null, hafalan: "", keterangan: "", status: "" },
+          { minggu: "2", id_hafalan: null, hafalan: "", keterangan: "", status: "" },
+          { minggu: "3", id_hafalan: null, hafalan: "", keterangan: "", status: "" },
+          { minggu: "4", id_hafalan: null, hafalan: "", keterangan: "", status: "" }
         ]
       });
     }
@@ -2497,6 +2513,7 @@ app.get('/hafalan/siswa/:nisn', (req, res) => {
     res.json({ hafalan: formattedResults });
   });
 });
+
 
 app.get('/hafalan/kelas/:nip', (req, res) => {
   const { nip } = req.params;
@@ -2583,18 +2600,19 @@ app.get('/hafalan/kelas/:nip', (req, res) => {
 
 
 app.post('/hafalan', (req, res) => {
-  const { id_hafalan, nisn, bulan, minggu, hafalan, no_kelas } = req.body;
+  const { id_hafalan, nisn, bulan, minggu, hafalan, no_kelas, keterangan, status } = req.body;
 
-  if (!id_hafalan || !nisn || !bulan || !minggu || !hafalan || !no_kelas) {
-    return res.status(400).json({ error: 'Semua kolom wajib diisi, termasuk no_kelas' });
+  // Validasi input
+  if (!id_hafalan || !nisn || !bulan || !minggu || !hafalan || !no_kelas || !keterangan || !status) {
+    return res.status(400).json({ error: 'Semua kolom wajib diisi' });
   }
 
   const sql = `
-    INSERT INTO hafalan (id_hafalan, nisn, bulan, minggu, hafalan, no_kelas)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO hafalan (id_hafalan, nisn, bulan, minggu, hafalan, no_kelas, keterangan, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
-  db.query(sql, [id_hafalan, nisn, bulan, minggu, hafalan, no_kelas], (err, result) => {
+  db.query(sql, [id_hafalan, nisn, bulan, minggu, hafalan, no_kelas, keterangan, status], (err, result) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -2603,27 +2621,30 @@ app.post('/hafalan', (req, res) => {
 });
 
 
+
 app.put('/hafalan/:id_hafalan', (req, res) => {
   const { id_hafalan } = req.params;
-  const { nisn, bulan, minggu, hafalan } = req.body;
+  const { nisn, bulan, minggu, hafalan, keterangan, status } = req.body;
 
-  if (!nisn || !bulan || !minggu || !hafalan) {
+  // Validasi input
+  if (!nisn || !bulan || !minggu || !hafalan || !keterangan || !status) {
     return res.status(400).json({ error: 'Semua kolom wajib diisi' });
   }
 
   const sql = `
     UPDATE hafalan 
-    SET nisn = ?, bulan = ?, minggu = ?, hafalan = ?
+    SET nisn = ?, bulan = ?, minggu = ?, hafalan = ?, keterangan = ?, status = ?
     WHERE id_hafalan = ?
   `;
 
-  db.query(sql, [nisn, bulan, minggu, hafalan, id_hafalan], (err, result) => {
+  db.query(sql, [nisn, bulan, minggu, hafalan, keterangan, status, id_hafalan], (err, result) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     res.json({ message: 'Hafalan berhasil diperbarui' });
   });
 });
+
 
 
 
